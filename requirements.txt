@@ -3,5 +3,7 @@ uvicorn>=0.28.0
 yt-dlp>=2024.1.0
 requests>=2.31.0
 tqdm>=4.66.0
+translators>=6.0.0
+deep-translator>=1.11.0
 google-api-python-client>=2.100.0
 google-auth-oauthlib>=1.0.0

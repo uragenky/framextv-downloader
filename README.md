@@ -18,8 +18,11 @@ Aplikasi modern untuk mencari dan mengunduh media (Film Bioskop, Serial TV Barat
 - 📁 **Download Manager Lokal (File Tersimpan):**
   - Akses riwayat unduhan lokal dengan badge counter file tersimpan di header.
   - Unduh langsung ke browser, salin tautan file, atau hapus file dari disk.
+- 🌐 **Auto-Translate Subtitle Cerdas (English ➔ Bahasa Indonesia):**
+  - Jika subtitle Bahasa Indonesia tidak disediakan oleh server provider, sistem secara otomatis mengunduh subtitle alternatif (misalnya Bahasa Inggris) dan menerjemahkannya cue demi cue ke Bahasa Indonesia dengan mempertahankan penanda waktu (timestamps) secara presisi.
+  - Subtitle hasil terjemahan otomatis (`.id.vtt`) ditanamkan langsung sebagai track internal video `.mp4` (`mov_text`, language: `ind`), serta file `.id.vtt` dan `.en.vtt` tetap disimpan berdampingan di `downloads/`.
 - 💬 **Subtitle Terembed Otomatis:**
-  - Subtitle (Bahasa Indonesia / Inggris) otomatis diunduh dan ditanamkan langsung ke dalam file video `.mp4` secara lossless via FFmpeg (`mov_text`).
+  - Subtitle otomatis ditanamkan langsung ke dalam file video `.mp4` secara lossless via FFmpeg (`mov_text`).
   - File subtitle `.vtt` terpisah juga ikut disimpan di folder `downloads/`.
 - 📦 **Batch Multi-Episode (Checkboxes):**
   - Centang beberapa episode sekaligus (misal Ep 1, 2, 3, 4, 5) untuk diproses bertahap baik untuk unduhan lokal maupun transfer cloud.
@@ -130,7 +133,8 @@ streamdown/
 │   │   └── client.py        # Klien multi-host API FrameX
 │   ├── downloader/
 │   │   ├── hls.py           # Downloader stream HLS
-│   │   └── manager.py       # Download Manager lokal & task registry
+│   │   ├── manager.py       # Download Manager lokal & task registry
+│   │   └── sub_translator.py# Auto-translator subtitle (EN -> ID)
 │   └── uploader/
 │       └── gdrive.py        # Integrasi Google Drive
 └── static/

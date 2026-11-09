@@ -120,6 +120,8 @@ class LocalDownloadRequest(BaseModel):
     episodes: Optional[List[int]] = None
     provider: Optional[str] = None
     filename: Optional[str] = None
+    target_sub_lang: Optional[str] = "id"
+    auto_translate_sub: Optional[bool] = True
 
 
 def extract_media_from_input(raw: str) -> Optional[tuple]:
@@ -209,6 +211,8 @@ def api_download_local(req: LocalDownloadRequest):
                     season=req.season or 1,
                     episode=ep,
                     provider=req.provider,
+                    target_sub_lang=req.target_sub_lang or "id",
+                    auto_translate_sub=req.auto_translate_sub if req.auto_translate_sub is not None else True,
                 )
                 queued_tasks.append(t.to_dict())
         else:
@@ -220,6 +224,8 @@ def api_download_local(req: LocalDownloadRequest):
                 episode=req.episode or 1,
                 provider=req.provider,
                 custom_filename=req.filename or "",
+                target_sub_lang=req.target_sub_lang or "id",
+                auto_translate_sub=req.auto_translate_sub if req.auto_translate_sub is not None else True,
             )
             queued_tasks.append(t.to_dict())
 

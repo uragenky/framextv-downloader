@@ -767,7 +767,9 @@ async function triggerLocalDownload() {
     episode: eps[0] || 1,
     episodes: eps,
     provider: null,
-    filename: null
+    filename: null,
+    target_sub_lang: 'id',
+    auto_translate_sub: true
   };
 
   try {
@@ -826,6 +828,11 @@ function trackLocalDownloadProgress(taskId, filename) {
         if (percentEl) percentEl.textContent = `${pct.toFixed(1)}%`;
         if (progressBar) progressBar.style.width = `${pct}%`;
         if (speedEtaEl) speedEtaEl.textContent = `${data.speed_str || '0 KB/s'} • ETA ${data.eta_str || '--:--'}`;
+      } else if (data.status === 'translating_sub') {
+        if (statusEl) statusEl.textContent = `🌐 ${data.speed_str || 'Menerjemahkan subtitle ke Indonesia...'}`;
+        if (percentEl) percentEl.textContent = `${(data.percent || 99).toFixed(1)}%`;
+        if (progressBar) progressBar.style.width = `${data.percent || 99}%`;
+        if (speedEtaEl) speedEtaEl.textContent = 'Auto-Translate • Sedang memproses';
       } else if (data.status === 'embedding') {
         if (statusEl) statusEl.textContent = 'Menanamkan subtitle ke video MP4...';
         if (percentEl) percentEl.textContent = '99%';
