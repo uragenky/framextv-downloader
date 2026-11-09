@@ -832,6 +832,8 @@ async function triggerLocalDownload() {
   const label = currentMediaType === 'movie' ? title : `${title} S${season} (${eps.length} Ep: ${eps.join(', ')})`;
   showToast(`Menyiapkan unduhan lokal: ${label}...`);
 
+  const origLang = (itemDetails && itemDetails.original_language) || (selectedItem && selectedItem.original_language) || null;
+
   const payload = {
     id: String(selectedItem.id),
     title: title,
@@ -842,7 +844,8 @@ async function triggerLocalDownload() {
     provider: null,
     filename: null,
     target_sub_lang: 'id',
-    auto_translate_sub: true
+    auto_translate_sub: true,
+    original_language: origLang
   };
 
   try {

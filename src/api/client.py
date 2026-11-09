@@ -5,15 +5,16 @@ Klien API frameXTV dengan dukungan Multi-Host Failover dan Otomatis Provider Fal
 import urllib.request
 import urllib.parse
 import json
+import ssl
 import logging
 from typing import Optional, Dict, Any, List
 
 logger = logging.getLogger("framextv_client")
 
 BACKEND_HOSTS = [
-    "https://api.framextv.cc",
     "https://api.framextv.tech",
     "https://api.framextv.xyz",
+    "https://api.framextv.cc",
     "https://api.framextv.pro"
 ]
 
@@ -28,6 +29,7 @@ class FrameXClient:
     def __init__(self, base_hosts: Optional[List[str]] = None):
         self.hosts = base_hosts or BACKEND_HOSTS
         self.active_host_index = 0
+        self.ssl_context = ssl._create_unverified_context()
 
     @property
     def current_host(self) -> str:
@@ -48,7 +50,7 @@ class FrameXClient:
             url = f"{self.current_host}{path}{query_string}"
             try:
                 req = urllib.request.Request(url, headers=DEFAULT_HEADERS)
-                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                with urllib.request.urlopen(req, timeout=timeout, context=self.ssl_context) as resp:
                     if resp.status == 200:
                         raw = resp.read().decode("utf-8", errors="ignore")
                         return json.loads(raw)

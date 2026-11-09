@@ -122,6 +122,7 @@ class LocalDownloadRequest(BaseModel):
     filename: Optional[str] = None
     target_sub_lang: Optional[str] = "id"
     auto_translate_sub: Optional[bool] = True
+    original_language: Optional[str] = None
 
 
 def extract_media_from_input(raw: str) -> Optional[tuple]:
@@ -213,6 +214,7 @@ def api_download_local(req: LocalDownloadRequest):
                     provider=req.provider,
                     target_sub_lang=req.target_sub_lang or "id",
                     auto_translate_sub=req.auto_translate_sub if req.auto_translate_sub is not None else True,
+                    original_language=req.original_language,
                 )
                 queued_tasks.append(t.to_dict())
         else:
@@ -226,6 +228,7 @@ def api_download_local(req: LocalDownloadRequest):
                 custom_filename=req.filename or "",
                 target_sub_lang=req.target_sub_lang or "id",
                 auto_translate_sub=req.auto_translate_sub if req.auto_translate_sub is not None else True,
+                original_language=req.original_language,
             )
             queued_tasks.append(t.to_dict())
 

@@ -11,6 +11,7 @@ import re
 import sys
 import time
 import uuid
+import json
 import shutil
 import logging
 import threading
@@ -34,8 +35,81 @@ BIN_DIR = BASE_DIR / "bin"
 if BIN_DIR.exists():
     os.environ["PATH"] = f"{BIN_DIR}:{os.environ.get('PATH', '')}"
 FFMPEG_BIN = BIN_DIR / "ffmpeg" if (BIN_DIR / "ffmpeg").exists() else Path("ffmpeg")
+FFPROBE_BIN = BIN_DIR / "ffprobe" if (BIN_DIR / "ffprobe").exists() else Path("ffprobe")
 
 DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Pemetaan kode bahasa 2-huruf ke variasi 3-huruf / label audio untuk pencocokan audio asli
+LANG_TOKENS_MAP = {
+    "ko": ["kor", "ko", "korean"],
+    "ja": ["jpn", "ja", "japanese"],
+    "en": ["eng", "en", "english"],
+    "zh": ["chi", "zho", "zh", "chinese", "mandarin", "cantonese"],
+    "id": ["ind", "id", "indonesian"],
+    "es": ["spa", "es", "spanish"],
+    "fr": ["fra", "fre", "fr", "french"],
+    "de": ["deu", "ger", "de", "german"],
+    "it": ["ita", "it", "italian"],
+    "th": ["tha", "th", "thai"],
+    "ru": ["rus", "ru", "russian"],
+    "pt": ["por", "pt", "portuguese"],
+    "hi": ["hin", "hi", "hindi"],
+    "tl": ["tgl", "fil", "tl", "tagalog", "filipino"],
+    "vi": ["vie", "vi", "vietnamese"],
+    "tr": ["tur", "tr", "turkish"],
+    "ar": ["ara", "ar", "arabic"],
+}
+
+
+def probe_audio_streams(file_path: Path) -> List[Dict[str, Any]]:
+    """Membaca daftar track audio dari file video menggunakan ffprobe."""
+    bin_probe = str(FFPROBE_BIN) if FFPROBE_BIN.exists() else "ffprobe"
+    try:
+        cmd = [
+            bin_probe, "-v", "error",
+            "-show_entries", "stream=index,codec_type,codec_name:stream_tags=language,title:stream_disposition=default",
+            "-of", "json",
+            str(file_path)
+        ]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=20)
+        if res.returncode == 0:
+            data = json.loads(res.stdout)
+            audio_streams = []
+            audio_idx = 0
+            for s in data.get("streams", []):
+                if s.get("codec_type") == "audio":
+                    s["audio_index"] = audio_idx
+                    audio_streams.append(s)
+                    audio_idx += 1
+            return audio_streams
+    except Exception as e:
+        logger.warning(f"Gagal ffprobe audio streams: {e}")
+    return []
+
+
+def find_original_audio_index(audio_streams: List[Dict[str, Any]], orig_lang: str) -> Optional[int]:
+    """Mencari audio_index yang cocok dengan bahasa asli serial / film."""
+    if not orig_lang or not audio_streams:
+        return None
+    orig_lang = orig_lang.lower().strip()
+    match_tokens = LANG_TOKENS_MAP.get(orig_lang, [orig_lang])
+
+    # 1. Cek language tag pada metadata stream
+    for s in audio_streams:
+        tags = s.get("tags") or {}
+        lang_tag = (tags.get("language") or "").lower().strip()
+        if lang_tag in match_tokens:
+            return s["audio_index"]
+
+    # 2. Cek title tag
+    for s in audio_streams:
+        tags = s.get("tags") or {}
+        title_tag = (tags.get("title") or "").lower().strip()
+        for tok in match_tokens:
+            if tok in title_tag:
+                return s["audio_index"]
+
+    return None
 
 
 def sanitize_filename(filename: str) -> str:
@@ -89,6 +163,7 @@ class DownloadTask:
     is_cancelled: bool = False
     target_sub_lang: str = "id"
     auto_translate_sub: bool = True
+    original_language: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -113,6 +188,7 @@ class DownloadTask:
             "provider": self.provider,
             "target_sub_lang": self.target_sub_lang,
             "auto_translate_sub": self.auto_translate_sub,
+            "original_language": self.original_language,
             "created_at": self.created_at,
         }
 
@@ -232,6 +308,7 @@ class LocalDownloadManager:
         custom_filename: str = "",
         target_sub_lang: str = "id",
         auto_translate_sub: bool = True,
+        original_language: Optional[str] = None,
     ) -> DownloadTask:
         task_id = uuid.uuid4().hex[:10]
         
@@ -258,6 +335,7 @@ class LocalDownloadManager:
             status="queued",
             target_sub_lang=target_sub_lang,
             auto_translate_sub=auto_translate_sub,
+            original_language=original_language or "",
         )
 
         with self.lock:
@@ -332,6 +410,16 @@ class LocalDownloadManager:
             counter += 1
 
         temp_dl_path = DOWNLOADS_DIR / f".tmp_{task.task_id}_{final_filename}"
+
+        # Pastikan bahasa asli media terdeteksi (misal 'ko' untuk drakor, 'ja' untuk anime)
+        if not task.original_language and task.media_id:
+            try:
+                det = self.client.get_details(task.media_id, task.media_type)
+                if det and det.get("original_language"):
+                    task.original_language = det.get("original_language")
+                    logger.info(f"[{task.filename}] Bahasa asli terdeteksi dari metadata: {task.original_language}")
+            except Exception as e_det:
+                logger.debug(f"Gagal deteksi original_language: {e_det}")
 
         # 2. Persiapan Subtitle Secara PARALEL di Background Thread
         sub_result = {
@@ -610,48 +698,90 @@ class LocalDownloadManager:
                 except: pass
             return
 
-        # 5. Tunggu proses subtitle selesai (jika belum) & lakukan Embedding via FFmpeg
-        task.status = "embedding"
-        task.speed_str = "Menyelesaikan subtitle & embedding..."
-        task.percent = 99.0
+        # 5. Tunggu proses subtitle/terjemahan background selesai (jika masih berjalan)
         if not sub_result.get("done"):
-            logger.info(f"[{task.filename}] Menunggu terjemahan subtitle background selesai...")
-            sub_thread.join(timeout=45)
+            task.status = "translating_sub"
+            start_wait = time.time()
+            max_sub_wait = 180  # Maksimal 3 menit toleransi terjemahan
+            logger.info(f"[{task.filename}] Menunggu terjemahan subtitle background tuntas...")
+            while not sub_result.get("done") and (time.time() - start_wait < max_sub_wait):
+                if task.is_cancelled:
+                    break
+                prog = sub_result.get("sub_progress")
+                task.speed_str = f"Menerjemahkan subtitle ({prog})..." if prog else "Menerjemahkan subtitle ke Indonesia..."
+                time.sleep(0.5)
 
         target_sub_path = sub_result.get("target_sub_path")
         target_sub_lang = sub_result.get("target_sub_lang", "ind")
+        has_sub = bool(target_sub_path and target_sub_path.exists())
 
+        # 6. Analisis Track Audio (ffprobe) & Force Audio Asli (Original)
+        task.status = "embedding"
+        task.percent = 99.0
+        task.speed_str = "Menanamkan subtitle & mengatur audio original..."
+
+        audio_streams = probe_audio_streams(temp_dl_path)
+        orig_audio_idx = find_original_audio_index(audio_streams, task.original_language)
+
+        need_remux = has_sub or (len(audio_streams) > 1) or (orig_audio_idx is not None)
         embedded_success = False
-        if target_sub_path and target_sub_path.exists() and FFMPEG_BIN.exists():
+
+        if need_remux and FFMPEG_BIN.exists():
             embedded_temp_path = DOWNLOADS_DIR / f".embed_{task.task_id}_{final_filename}"
             sub_title_label = "Indonesian" if target_sub_lang in ["id", "ind"] else "English"
+
             cmd = [
                 str(FFMPEG_BIN), "-y",
                 "-i", str(temp_dl_path),
-                "-i", str(target_sub_path),
-                "-map", "0:v",
-                "-map", "0:a?",
-                "-map", "1:s:0",
-                "-c:v", "copy",
-                "-c:a", "copy",
-                "-c:s", "mov_text",
-                "-metadata:s:s:0", f"language={target_sub_lang}",
-                "-metadata:s:s:0", f"title={sub_title_label}",
-                "-metadata:s:s:0", f"handler_name={sub_title_label}",
-                "-disposition:s:0", "default+forced",
-                "-movflags", "+faststart",
-                str(embedded_temp_path)
             ]
+            if has_sub:
+                cmd.extend(["-i", str(target_sub_path)])
+
+            # Map video track (hanya video utama)
+            cmd.extend(["-map", "0:v:0"])
+
+            # Map audio tracks & Force original audio sebagai stream audio ke-0 (default)
+            if orig_audio_idx is not None and len(audio_streams) > 1:
+                cmd.extend(["-map", f"0:a:{orig_audio_idx}"])
+                for i in range(len(audio_streams)):
+                    if i != orig_audio_idx:
+                        cmd.extend(["-map", f"0:a:{i}"])
+                cmd.extend(["-disposition:a:0", "default"])
+                for i in range(1, len(audio_streams)):
+                    cmd.extend([f"-disposition:a:{i}", "0"])
+                logger.info(f"[{task.filename}] Audio asli ({task.original_language}) diposisikan sebagai audio default ke-0 (track {orig_audio_idx} -> 0)")
+            elif len(audio_streams) > 0:
+                cmd.extend(["-map", "0:a"])
+                cmd.extend(["-disposition:a:0", "default"])
+                for i in range(1, len(audio_streams)):
+                    cmd.extend([f"-disposition:a:{i}", "0"])
+            else:
+                cmd.extend(["-map", "0:a?"])
+
+            cmd.extend(["-c:v", "copy", "-c:a", "copy"])
+
+            if has_sub:
+                cmd.extend([
+                    "-map", "1:s:0",
+                    "-c:s", "mov_text",
+                    "-metadata:s:s:0", f"language={target_sub_lang}",
+                    "-metadata:s:s:0", f"title={sub_title_label}",
+                    "-metadata:s:s:0", f"handler_name={sub_title_label}",
+                    "-disposition:s:0", "default+forced",
+                ])
+
+            cmd.extend(["-movflags", "+faststart", str(embedded_temp_path)])
+
             try:
-                proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
+                proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
                 if proc.returncode == 0 and embedded_temp_path.exists() and embedded_temp_path.stat().st_size > 1024 * 100:
                     if temp_dl_path.exists():
                         temp_dl_path.unlink()
                     embedded_temp_path.rename(final_mp4_path)
                     embedded_success = True
-                    logger.info(f"Subtitle ({sub_title_label}) berhasil diembed (default+forced) ke {final_filename}")
+                    logger.info(f"[{task.filename}] Sukses remux FFmpeg (Subtitle: {has_sub}, Audio default: {task.original_language or 'auto'})")
             except Exception as e_embed:
-                logger.warning(f"Gagal embed subtitle via FFmpeg: {e_embed}")
+                logger.warning(f"Gagal remux FFmpeg: {e_embed}")
             finally:
                 if embedded_temp_path.exists():
                     try:
