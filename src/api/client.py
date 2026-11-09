@@ -160,3 +160,10 @@ class FrameXClient:
 
         res = self.request("/api/subtitles", params)
         return res.get("subtitles") or []
+
+    def get_season(self, media_id: int | str, season: int = 1) -> Dict[str, Any]:
+        """Mengambil rincian musim dan daftar episode beserta tanggal tayang."""
+        try:
+            return self.request("/api/season", {"id": str(media_id), "season": str(season)})
+        except Exception:
+            return {}

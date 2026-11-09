@@ -333,7 +333,117 @@ class LocalDownloadManager:
 
         temp_dl_path = DOWNLOADS_DIR / f".tmp_{task.task_id}_{final_filename}"
 
-        # 2. Progress Hook untuk yt-dlp
+        # 2. Persiapan Subtitle Secara PARALEL di Background Thread
+        sub_result = {
+            "target_sub_path": None,
+            "target_sub_lang": "ind" if task.target_sub_lang == "id" else "eng",
+            "error": None,
+            "done": False,
+            "sub_progress": "",
+        }
+
+        def _sub_worker():
+            try:
+                subs_list = self.client.get_subtitles(
+                    media_id=task.media_id,
+                    media_type=task.media_type,
+                    season=task.season,
+                    episode=task.episode
+                )
+                if not subs_list:
+                    return
+
+                # Cek apakah subtitle bahasa Indonesia sudah tersedia langsung
+                preferred_target = ["id", "ind", "indonesian"]
+                direct_sub = None
+                for pref in preferred_target:
+                    for sub in subs_list:
+                        lang = (sub.get("lang") or sub.get("language") or "").lower()
+                        label = (sub.get("label") or "").lower()
+                        if pref == lang or pref in label:
+                            direct_sub = sub
+                            break
+                    if direct_sub:
+                        break
+
+                if direct_sub and direct_sub.get("url"):
+                    vtt_name = f"{final_mp4_path.stem}.id.vtt"
+                    vtt_file_path = DOWNLOADS_DIR / vtt_name
+                    srt_name = f"{final_mp4_path.stem}.id.srt"
+                    srt_file_path = DOWNLOADS_DIR / srt_name
+                    req_sub = urllib.request.Request(direct_sub["url"], headers={"User-Agent": "Mozilla/5.0"})
+                    with urllib.request.urlopen(req_sub, timeout=12) as s_resp, open(vtt_file_path, "wb") as sf:
+                        sf.write(s_resp.read())
+                    normalize_subtitle_file(vtt_file_path, vtt_file_path, srt_file_path)
+                    sub_result["target_sub_path"] = vtt_file_path
+                    sub_result["target_sub_lang"] = "ind"
+                    task.subtitles_files.append(vtt_name)
+                    if srt_file_path.exists():
+                        task.subtitles_files.append(srt_name)
+                    logger.info(f"[{task.filename}] Subtitle Indonesia langsung siap & dinormalisasi (background paralel)")
+                else:
+                    # Ambil subtitle alternatif (utamakan English)
+                    source_candidates = ["en", "eng", "english"]
+                    source_sub = None
+                    for pref in source_candidates:
+                        for sub in subs_list:
+                            lang = (sub.get("lang") or sub.get("language") or "").lower()
+                            label = (sub.get("label") or "").lower()
+                            if pref == lang or pref in label:
+                                source_sub = sub
+                                break
+                        if source_sub:
+                            break
+
+                    if not source_sub and subs_list:
+                        source_sub = subs_list[0]
+
+                    if source_sub and source_sub.get("url"):
+                        src_sub_lang = source_sub.get("lang") or "en"
+                        vtt_name = f"{final_mp4_path.stem}.{src_sub_lang}.vtt"
+                        vtt_file_path = DOWNLOADS_DIR / vtt_name
+                        req_sub = urllib.request.Request(source_sub["url"], headers={"User-Agent": "Mozilla/5.0"})
+                        with urllib.request.urlopen(req_sub, timeout=12) as s_resp, open(vtt_file_path, "wb") as sf:
+                            sf.write(s_resp.read())
+                        normalize_subtitle_file(vtt_file_path, vtt_file_path)
+                        task.subtitles_files.append(vtt_name)
+                        sub_result["target_sub_path"] = vtt_file_path
+                        sub_result["target_sub_lang"] = "eng" if src_sub_lang in ["en", "eng"] else src_sub_lang
+
+                        # Terjemahkan subtitle ke Indonesia secara simultan
+                        if task.auto_translate_sub and task.target_sub_lang in ["id", "ind"] and src_sub_lang not in ["id", "ind"]:
+                            translated_vtt_name = f"{final_mp4_path.stem}.id.vtt"
+                            translated_vtt_path = DOWNLOADS_DIR / translated_vtt_name
+
+                            def on_translate_progress(done: int, total: int):
+                                sub_result["sub_progress"] = f"Sub {done}/{total}"
+
+                            logger.info(f"[{task.filename}] Menerjemahkan subtitle di background simultan...")
+                            trans_ok = translate_subtitle_file(
+                                src_path=vtt_file_path,
+                                dest_path=translated_vtt_path,
+                                src_lang=src_sub_lang,
+                                target_lang="id",
+                                progress_callback=on_translate_progress
+                            )
+                            if trans_ok and translated_vtt_path.exists() and translated_vtt_path.stat().st_size > 0:
+                                sub_result["target_sub_path"] = translated_vtt_path
+                                sub_result["target_sub_lang"] = "ind"
+                                task.subtitles_files.append(translated_vtt_name)
+                                srt_candidate = translated_vtt_path.with_suffix(".srt")
+                                if srt_candidate.exists():
+                                    task.subtitles_files.append(srt_candidate.name)
+                                logger.info(f"[{task.filename}] Terjemahan subtitle simultan tuntas!")
+            except Exception as e_sub:
+                logger.warning(f"[{task.filename}] Error memproses subtitle simultan: {e_sub}")
+                sub_result["error"] = str(e_sub)
+            finally:
+                sub_result["done"] = True
+
+        sub_thread = threading.Thread(target=_sub_worker, daemon=True)
+        sub_thread.start()
+
+        # 3. Progress Hook untuk yt-dlp
         def ytdl_progress_hook(d):
             if task.is_cancelled:
                 raise DownloadCancelledError("Download dibatalkan oleh pengguna.")
@@ -356,14 +466,15 @@ class LocalDownloadManager:
                 task.downloaded_bytes = downloaded
                 task.total_bytes = total
                 task.speed_bps = speed or 0.0
-                task.speed_str = f"{format_bytes(speed)}/s" if speed else "0 KB/s"
+                sub_indicator = f" [🌐 {sub_result['sub_progress']}]" if sub_result.get("sub_progress") and not sub_result.get("done") else ""
+                task.speed_str = f"{format_bytes(speed)}/s{sub_indicator}" if speed else f"0 KB/s{sub_indicator}"
                 task.eta_seconds = eta or 0.0
                 task.eta_str = format_time(eta)
 
         download_success = False
         attempted_logs = []
 
-        # 3. Iterasi Fallback Antar Server & Sumber Stream
+        # 4. Iterasi Fallback Antar Server & Sumber Stream
         for prov_idx, prov in enumerate(candidate_providers):
             if task.is_cancelled:
                 break
@@ -476,132 +587,40 @@ class LocalDownloadManager:
             return
 
         if not download_success:
+            unreleased_hint = ""
+            try:
+                s_info = self.client.get_season(task.media_id, task.season)
+                for ep_item in s_info.get("episodes", []):
+                    if ep_item.get("episode_number") == task.episode:
+                        air_d = ep_item.get("air_date")
+                        if air_d:
+                            unreleased_hint = f" (Jadwal rilis: {air_d})"
+                        break
+            except Exception:
+                pass
+
             task.status = "failed"
-            task.error = f"Semua server stream gagal ({len(candidate_providers)} server telah dicoba)."
-            logger.error(f"Download gagal total untuk {task.filename}: {'; '.join(attempted_logs[:3])}")
+            if unreleased_hint:
+                task.error = f"Episode belum tayang di server stream{unreleased_hint}."
+            else:
+                task.error = f"Semua server stream gagal ({len(candidate_providers)} server telah dicoba)."
+            logger.error(f"Download gagal total untuk {task.filename}: {task.error}")
             if temp_dl_path.exists():
                 try: temp_dl_path.unlink()
                 except: pass
             return
 
-        # 3. Subtitles Processing
+        # 5. Tunggu proses subtitle selesai (jika belum) & lakukan Embedding via FFmpeg
         task.status = "embedding"
+        task.speed_str = "Menyelesaikan subtitle & embedding..."
         task.percent = 99.0
-        subs_list = []
-        try:
-            subs_list = self.client.get_subtitles(
-                media_id=task.media_id,
-                media_type=task.media_type,
-                season=task.season,
-                episode=task.episode
-            )
-        except Exception as e_sub:
-            logger.warning(f"Gagal mengambil daftar subtitle: {e_sub}")
+        if not sub_result.get("done"):
+            logger.info(f"[{task.filename}] Menunggu terjemahan subtitle background selesai...")
+            sub_thread.join(timeout=45)
 
-        target_sub_path = None
-        target_sub_lang = "ind" if task.target_sub_lang == "id" else "eng"
-        if subs_list:
-            # 3a. Cek apakah subtitle bahasa Indonesia sudah tersedia langsung dari provider
-            preferred_target = ["id", "ind", "indonesian"]
-            direct_sub = None
-            for pref in preferred_target:
-                for sub in subs_list:
-                    lang = (sub.get("lang") or sub.get("language") or "").lower()
-                    label = (sub.get("label") or "").lower()
-                    if pref == lang or pref in label:
-                        direct_sub = sub
-                        break
-                if direct_sub:
-                    break
+        target_sub_path = sub_result.get("target_sub_path")
+        target_sub_lang = sub_result.get("target_sub_lang", "ind")
 
-            if direct_sub:
-                # Subtitle Indonesia tersedia langsung!
-                sub_url = direct_sub.get("url")
-                if sub_url:
-                    vtt_name = f"{final_mp4_path.stem}.id.vtt"
-                    vtt_file_path = DOWNLOADS_DIR / vtt_name
-                    srt_name = f"{final_mp4_path.stem}.id.srt"
-                    srt_file_path = DOWNLOADS_DIR / srt_name
-                    try:
-                        req_sub = urllib.request.Request(sub_url, headers={"User-Agent": "Mozilla/5.0"})
-                        with urllib.request.urlopen(req_sub, timeout=12) as s_resp, open(vtt_file_path, "wb") as sf:
-                            sf.write(s_resp.read())
-                        # Normalisasi format timestamps (titik untuk VTT) & bersihkan tag SSA
-                        normalize_subtitle_file(vtt_file_path, vtt_file_path, srt_file_path)
-                        target_sub_path = vtt_file_path
-                        target_sub_lang = "ind"
-                        task.subtitles_files.append(vtt_name)
-                        if srt_file_path.exists():
-                            task.subtitles_files.append(srt_name)
-                        logger.info(f"Subtitle Indonesia langsung disimpan & dinormalisasi: {vtt_name}")
-                    except Exception as e_sub_dl:
-                        logger.warning(f"Gagal unduh file subtitle Indonesia: {e_sub_dl}")
-            else:
-                # 3b. Subtitle Indonesia tidak tersedia. Cari subtitle alternatif (utamakan English)
-                source_candidates = ["en", "eng", "english"]
-                source_sub = None
-                for pref in source_candidates:
-                    for sub in subs_list:
-                        lang = (sub.get("lang") or sub.get("language") or "").lower()
-                        label = (sub.get("label") or "").lower()
-                        if pref == lang or pref in label:
-                            source_sub = sub
-                            break
-                    if source_sub:
-                        break
-
-                if not source_sub:
-                    source_sub = subs_list[0]
-
-                sub_url = source_sub.get("url")
-                if sub_url:
-                    src_sub_lang = source_sub.get("lang") or "en"
-                    vtt_name = f"{final_mp4_path.stem}.{src_sub_lang}.vtt"
-                    vtt_file_path = DOWNLOADS_DIR / vtt_name
-                    try:
-                        req_sub = urllib.request.Request(sub_url, headers={"User-Agent": "Mozilla/5.0"})
-                        with urllib.request.urlopen(req_sub, timeout=12) as s_resp, open(vtt_file_path, "wb") as sf:
-                            sf.write(s_resp.read())
-                        normalize_subtitle_file(vtt_file_path, vtt_file_path)
-                        task.subtitles_files.append(vtt_name)
-                        target_sub_path = vtt_file_path
-                        target_sub_lang = "eng" if src_sub_lang in ["en", "eng"] else src_sub_lang
-                        logger.info(f"Subtitle alternatif ({src_sub_lang}) disimpan: {vtt_name}")
-
-                        # 3c. Auto-Translate jika target bahasa adalah Bahasa Indonesia
-                        if task.auto_translate_sub and task.target_sub_lang in ["id", "ind"] and src_sub_lang not in ["id", "ind"]:
-                            task.status = "translating_sub"
-                            task.speed_str = "Menerjemahkan subtitle ke Indonesia..."
-                            translated_vtt_name = f"{final_mp4_path.stem}.id.vtt"
-                            translated_vtt_path = DOWNLOADS_DIR / translated_vtt_name
-
-                            def on_translate_progress(done: int, total: int):
-                                task.speed_str = f"Menerjemahkan sub ({done}/{total})..."
-                                task.percent = min(99.0 + (done / total * 0.9), 99.9)
-
-                            logger.info(f"Menerjemahkan subtitle otomatis: {vtt_name} -> {translated_vtt_name}")
-                            trans_ok = translate_subtitle_file(
-                                src_path=vtt_file_path,
-                                dest_path=translated_vtt_path,
-                                src_lang=src_sub_lang,
-                                target_lang="id",
-                                progress_callback=on_translate_progress
-                            )
-                            if trans_ok and translated_vtt_path.exists() and translated_vtt_path.stat().st_size > 0:
-                                target_sub_path = translated_vtt_path
-                                target_sub_lang = "ind"
-                                task.subtitles_files.append(translated_vtt_name)
-                                srt_candidate = translated_vtt_path.with_suffix(".srt")
-                                if srt_candidate.exists():
-                                    task.subtitles_files.append(srt_candidate.name)
-                                logger.info(f"Auto-translate sukses! Track MP4 akan menggunakan: {translated_vtt_name}")
-                    except Exception as e_sub_dl:
-                        logger.warning(f"Gagal mengunduh/menerjemahkan subtitle: {e_sub_dl}")
-
-        # 4. Embed subtitle jika tersedia via FFmpeg (dengan default & forced flag agar selalu auto-enable)
-        task.status = "embedding"
-        task.speed_str = "Menanamkan subtitle ke MP4..."
-        task.percent = 99.5
         embedded_success = False
         if target_sub_path and target_sub_path.exists() and FFMPEG_BIN.exists():
             embedded_temp_path = DOWNLOADS_DIR / f".embed_{task.task_id}_{final_filename}"

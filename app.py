@@ -336,6 +336,15 @@ def api_details(id: str, type: str = "movie"):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/season")
+def api_season(id: str, season: int = 1):
+    try:
+        data = client.get_season(media_id=id, season=season)
+        return {"success": True, "data": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/providers")
 def api_providers(type: str = "movie"):
     try:

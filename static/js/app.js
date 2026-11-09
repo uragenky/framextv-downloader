@@ -294,7 +294,9 @@ async function loadSeasonsAndEpisodes(id) {
   }
 }
 
-function onSeasonChange() {
+let currentSeasonEpisodesList = [];
+
+async function onSeasonChange() {
   const selectSeason = document.getElementById('selectSeason');
   const chosenSeason = Number(selectSeason.value) || 1;
 
@@ -308,31 +310,72 @@ function onSeasonChange() {
 
   currentSeasonEpisodeCount = epCount;
   selectedEpisodes = new Set([1]);
+  currentSeasonEpisodesList = [];
   renderEpisodesCheckboxes(epCount);
   updateBatchUI();
+
+  if (itemDetails && itemDetails.id && currentMediaType !== 'movie') {
+    try {
+      const res = await fetch(`/api/season?id=${itemDetails.id}&season=${chosenSeason}`);
+      const json = await res.json();
+      if (json.success && json.data && json.data.episodes) {
+        currentSeasonEpisodesList = json.data.episodes;
+        if (json.data.episodes.length > 0) {
+          currentSeasonEpisodeCount = json.data.episodes.length;
+        }
+        renderEpisodesCheckboxes(currentSeasonEpisodeCount);
+        updateBatchUI();
+      }
+    } catch (e) {
+      console.debug('Failed to load season details:', e);
+    }
+  }
 }
 
 function renderEpisodesCheckboxes(totalEpisodes) {
   const container = document.getElementById('episodesCheckboxesContainer');
   if (!container) return;
   container.innerHTML = '';
+  const now = new Date();
 
   for (let i = 1; i <= totalEpisodes; i++) {
     const isChecked = selectedEpisodes.has(i);
+    const epItem = currentSeasonEpisodesList.find(e => (e.episode_number === i || e.number === i));
+    const isUnreleased = epItem && epItem.air_date && new Date(epItem.air_date) > now;
+    const dateBadge = epItem && epItem.air_date ? epItem.air_date.slice(5) : '';
+
     const label = document.createElement('label');
-    label.className = `flex items-center space-x-1.5 p-2 rounded-lg border text-xs cursor-pointer select-none transition ${isChecked ? 'bg-emerald-950/70 border-emerald-500/80 text-emerald-300' : 'bg-zinc-950/80 hover:bg-zinc-900 border-zinc-800 text-zinc-400'}`;
     label.id = `epCard_${i}`;
 
-    label.innerHTML = `
-      <input 
-        type="checkbox" 
-        value="${i}" 
-        ${isChecked ? 'checked' : ''} 
-        onchange="toggleEpisodeCheckbox(${i})" 
-        class="w-3.5 h-3.5 accent-emerald-500 rounded bg-zinc-900 border-zinc-700 cursor-pointer"
-      />
-      <span class="font-mono text-[11px] font-bold">Ep ${i}</span>
-    `;
+    if (isUnreleased) {
+      label.className = `flex items-center justify-between p-2 rounded-lg border text-xs cursor-pointer select-none transition ${isChecked ? 'bg-amber-950/60 border-amber-500/80 text-amber-300' : 'bg-zinc-950/40 hover:bg-zinc-900 border-zinc-850 text-zinc-400 opacity-80'}`;
+      label.title = `Episode ${i} belum tayang (Jadwal rilis: ${epItem.air_date})`;
+      label.innerHTML = `
+        <div class="flex items-center space-x-1.5 overflow-hidden">
+          <input 
+            type="checkbox" 
+            value="${i}" 
+            ${isChecked ? 'checked' : ''} 
+            onchange="toggleEpisodeCheckbox(${i})" 
+            class="w-3.5 h-3.5 accent-amber-500 rounded bg-zinc-900 border-zinc-700 cursor-pointer"
+          />
+          <span class="font-mono text-[11px] font-bold">Ep ${i}</span>
+        </div>
+        <span class="text-[9px] font-mono px-1 py-0.2 rounded bg-zinc-800 text-amber-400/90 border border-amber-800/40" title="Jadwal rilis">${dateBadge}</span>
+      `;
+    } else {
+      label.className = `flex items-center space-x-1.5 p-2 rounded-lg border text-xs cursor-pointer select-none transition ${isChecked ? 'bg-emerald-950/70 border-emerald-500/80 text-emerald-300' : 'bg-zinc-950/80 hover:bg-zinc-900 border-zinc-800 text-zinc-400'}`;
+      label.innerHTML = `
+        <input 
+          type="checkbox" 
+          value="${i}" 
+          ${isChecked ? 'checked' : ''} 
+          onchange="toggleEpisodeCheckbox(${i})" 
+          class="w-3.5 h-3.5 accent-emerald-500 rounded bg-zinc-900 border-zinc-700 cursor-pointer"
+        />
+        <span class="font-mono text-[11px] font-bold">Ep ${i}</span>
+      `;
+    }
 
     container.appendChild(label);
   }
@@ -345,12 +388,23 @@ function toggleEpisodeCheckbox(epNum) {
     }
   } else {
     selectedEpisodes.add(epNum);
+    const epItem = currentSeasonEpisodesList.find(e => (e.episode_number === epNum || e.number === epNum));
+    if (epItem && epItem.air_date && new Date(epItem.air_date) > new Date()) {
+      showToast(`ℹ️ Episode ${epNum} baru tayang pada ${epItem.air_date} dan kemungkinan belum ada di server stream.`);
+    }
   }
 
   const card = document.getElementById(`epCard_${epNum}`);
   if (card) {
     const isChecked = selectedEpisodes.has(epNum);
-    card.className = `flex items-center space-x-1.5 p-2 rounded-lg border text-xs cursor-pointer select-none transition ${isChecked ? 'bg-emerald-950/70 border-emerald-500/80 text-emerald-300' : 'bg-zinc-950/80 hover:bg-zinc-900 border-zinc-800 text-zinc-400'}`;
+    const epItem = currentSeasonEpisodesList.find(e => (e.episode_number === epNum || e.number === epNum));
+    const isUnreleased = epItem && epItem.air_date && new Date(epItem.air_date) > new Date();
+
+    if (isUnreleased) {
+      card.className = `flex items-center justify-between p-2 rounded-lg border text-xs cursor-pointer select-none transition ${isChecked ? 'bg-amber-950/60 border-amber-500/80 text-amber-300' : 'bg-zinc-950/40 hover:bg-zinc-900 border-zinc-850 text-zinc-400 opacity-80'}`;
+    } else {
+      card.className = `flex items-center space-x-1.5 p-2 rounded-lg border text-xs cursor-pointer select-none transition ${isChecked ? 'bg-emerald-950/70 border-emerald-500/80 text-emerald-300' : 'bg-zinc-950/80 hover:bg-zinc-900 border-zinc-800 text-zinc-400'}`;
+    }
   }
 
   updateBatchUI();
@@ -358,9 +412,25 @@ function toggleEpisodeCheckbox(epNum) {
 
 function selectAllEpisodes() {
   selectedEpisodes = new Set();
+  const now = new Date();
+  let selectedAny = false;
+
   for (let i = 1; i <= currentSeasonEpisodeCount; i++) {
-    selectedEpisodes.add(i);
+    const epItem = currentSeasonEpisodesList.find(e => (e.episode_number === i || e.number === i));
+    const isUnreleased = epItem && epItem.air_date && new Date(epItem.air_date) > now;
+    if (!isUnreleased) {
+      selectedEpisodes.add(i);
+      selectedAny = true;
+    }
   }
+
+  // Fallback jika semua unreleased atau data tidak ada, pilih semua
+  if (!selectedAny) {
+    for (let i = 1; i <= currentSeasonEpisodeCount; i++) {
+      selectedEpisodes.add(i);
+    }
+  }
+
   renderEpisodesCheckboxes(currentSeasonEpisodeCount);
   updateBatchUI();
 }
