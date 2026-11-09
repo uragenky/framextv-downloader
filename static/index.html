@@ -1,324 +1,646 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="id" class="dark">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>StreamDown — FrameX Downloader</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StreamDown — FrameX Movie, TV & Anime Downloader</title>
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <style>
-    * { font-family: 'Inter', sans-serif; }
-    code, .mono { font-family: 'JetBrains Mono', monospace; }
-    body { background: #09090b; color: #fafafa; }
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #18181b; }
-    ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
-    .glass { background: rgba(24,24,27,0.85); backdrop-filter: blur(12px); border: 1px solid rgba(63,63,70,0.5); }
-    .pulse-glow { animation: pulseGlow 2s ease-in-out infinite; }
-    @keyframes pulseGlow {
-      0%, 100% { box-shadow: 0 0 0 0 rgba(99,102,241,0.3); }
-      50% { box-shadow: 0 0 20px 4px rgba(99,102,241,0.15); }
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f5f3ff',
+              100: '#ede9fe',
+              500: '#8b5cf6',
+              600: '#7c3aed',
+              700: '#6d28d9'
+            }
+          }
+        }
+      }
     }
-    .fade-in { animation: fadeIn 0.25s ease-out; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-    input:focus { outline: none; }
-    .check-item { transition: all 0.15s ease; }
-    .check-item:hover { background: rgba(63,63,70,0.3); }
-    .progress-bar { transition: width 0.3s ease; }
-    .line-clamp-3 {
-      display: -webkit-box;
-      -webkit-line-clamp: 3;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
+  </script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- HLS.js for Preview Player -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <style>
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #09090b; }
+    ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+    .glass {
+      background: rgba(18, 18, 24, 0.85);
+      backdrop-filter: blur(12px);
     }
   </style>
 </head>
-<body class="min-h-screen flex flex-col">
+<body class="bg-zinc-950 text-zinc-100 min-h-screen font-sans antialiased selection:bg-emerald-600 selection:text-white">
 
-  <!-- Header & Navigation -->
-  <header class="border-b border-zinc-800/80 bg-zinc-950/80 sticky top-0 z-40 backdrop-blur-md px-4 py-3">
-    <div class="max-w-4xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-      
-      <!-- Brand -->
-      <div class="flex items-center space-x-3">
-        <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shadow-md shadow-indigo-600/30 shrink-0">
-          <svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
-          </svg>
+  <!-- Navbar -->
+  <header class="sticky top-0 z-40 border-b border-zinc-800/80 glass">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+      <!-- Logo -->
+      <div class="flex items-center space-x-3 cursor-pointer" onclick="resetSearch()">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+          <i data-lucide="cloud-lightning" class="w-5 h-5 text-white"></i>
         </div>
         <div>
-          <div class="flex items-center space-x-2">
-            <h1 class="text-base font-bold tracking-tight">StreamDown</h1>
-            <span class="text-[10px] font-mono bg-zinc-800 text-zinc-400 px-1.5 py-0.2 rounded">v1.3</span>
-          </div>
+          <span class="font-black text-xl tracking-tight bg-gradient-to-r from-white via-zinc-200 to-emerald-400 bg-clip-text text-transparent">StreamDown</span>
+          <span class="hidden sm:inline-block ml-2 text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-800/60 font-bold">Cloud Runner 1 Gbps</span>
         </div>
       </div>
 
-      <!-- Navigation Tabs -->
-      <nav class="flex items-center bg-zinc-900/90 border border-zinc-800 p-1 rounded-xl gap-1">
-        <button
-          id="tab-btn-downloader"
-          class="tab-btn flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer bg-white text-zinc-950 shadow-sm"
-        >
-          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
-          </svg>
-          <span>Unduh Stream</span>
+      <!-- Right Nav Items -->
+      <div class="flex items-center space-x-2.5 sm:space-x-3">
+        <!-- Local Saved Files (Downloads Manager) -->
+        <button onclick="openLocalDownloadsModal()" title="Lihat File Unduhan Tersimpan di Komputer" class="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-indigo-500/40 text-xs transition cursor-pointer group shadow-sm">
+          <div class="w-6 h-6 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center group-hover:scale-105 transition">
+            <i data-lucide="folder-down" class="w-3.5 h-3.5"></i>
+          </div>
+          <div class="text-left hidden sm:block">
+            <div class="text-[9px] text-zinc-400 font-mono">File Lokal:</div>
+            <div class="text-[11px] font-bold text-indigo-400 font-mono"><span id="navDownloadsCount">0</span> File</div>
+          </div>
+          <span id="navDownloadsBadge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-bold">downloads/</span>
         </button>
 
-        <button
-          id="tab-btn-saved"
-          class="tab-btn flex items-center space-x-2 px-3.5 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-white transition-all cursor-pointer"
-        >
-          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/>
-          </svg>
-          <span>File Tersimpan</span>
-          <span id="nav-downloads-count" class="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-zinc-800 text-zinc-300">0</span>
+        <!-- Live Cloud Quota Badge -->
+        <button onclick="openCloudQuotaModal()" title="Lihat Perhitungan Kuota Mesin Server Cloud" class="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-emerald-500/30 text-xs transition cursor-pointer group shadow-sm">
+          <div class="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center group-hover:scale-105 transition">
+            <i data-lucide="gauge" class="w-3.5 h-3.5"></i>
+          </div>
+          <div class="text-left hidden md:block">
+            <div class="text-[9px] text-zinc-400 font-mono">Kuota Cloud:</div>
+            <div id="navQuotaBrief" class="text-[11px] font-bold text-emerald-400 font-mono">Memuat...</div>
+          </div>
+          <span id="navQuotaPill" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold">~1.000 film</span>
         </button>
-      </nav>
 
-      <!-- External Link -->
-      <a href="https://framextv.xyz" target="_blank" class="hidden sm:flex text-xs text-zinc-500 hover:text-zinc-300 transition-colors items-center space-x-1">
-        <span>framextv.xyz</span>
-        <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>
-      </a>
+        <!-- Target Google Drive Account Indicator & Changer -->
+        <button onclick="openGoogleDriveModal()" class="flex items-center space-x-2.5 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-xs transition cursor-pointer group shadow-sm">
+          <div class="w-6 h-6 rounded-lg bg-zinc-800 text-emerald-400 flex items-center justify-center">
+            <i data-lucide="cloud" class="w-3.5 h-3.5"></i>
+          </div>
+          <div class="text-left hidden lg:block">
+            <div class="flex items-center gap-1.5">
+              <span id="navGdriveEmail" class="text-xs font-bold text-white max-w-[150px] truncate">Belum Terhubung</span>
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
+            </div>
+            <div class="text-[10px] text-zinc-400 font-mono">
+              <span id="navGdriveFolder" class="truncate max-w-[140px]">📁 frameXTV_Downloads</span>
+            </div>
+          </div>
+        </button>
 
+        <!-- GitHub Cloud Runner Setup Button -->
+        <button onclick="openGithubConfigModal()" id="btnGithubStatus" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-xs text-zinc-300 hover:text-white transition cursor-pointer">
+          <i data-lucide="github" class="w-4 h-4"></i>
+          <span id="githubStatusText">Setup</span>
+        </button>
+      </div>
     </div>
   </header>
 
   <!-- Main Container -->
-  <main class="flex-1 px-4 py-6">
-    <div class="max-w-4xl mx-auto">
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-8">
 
-      <!-- ══════════════════════════════════════════════════════════════════ -->
-      <!-- TAB 1: UNDUH STREAM                                               -->
-      <!-- ══════════════════════════════════════════════════════════════════ -->
-      <div id="tab-downloader" class="space-y-5 fade-in">
+    <!-- Search Hero -->
+    <section class="mb-10 text-center max-w-3xl mx-auto">
+      <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-950/80 border border-emerald-800/80 text-emerald-300 text-xs font-semibold mb-3 shadow-md">
+        <i data-lucide="zap" class="w-4 h-4 text-emerald-400"></i>
+        <span>100% Cloud-to-Cloud • Bebas Matikan Laptop • Kuota Internet 0%</span>
+      </div>
 
-        <!-- Input Section -->
-        <section class="glass rounded-xl p-5 space-y-4">
-          <div>
-            <label class="text-xs font-mono font-semibold uppercase tracking-wider text-zinc-400 mb-2 block">Paste Link Film, TV, atau Anime</label>
-            <div class="flex gap-3">
-              <input
-                id="input-url"
-                type="text"
-                placeholder="https://framextv.xyz/watch/550 atau https://framextv.xyz/anime/182255"
-                class="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:border-indigo-500 transition-colors"
-              >
-              <button
-                id="btn-inspect"
-                class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-lg transition-all active:scale-95 whitespace-nowrap shadow-md shadow-indigo-600/30 flex items-center space-x-2 cursor-pointer"
-              >
-                <span>Cek Link</span>
-              </button>
-            </div>
-          </div>
+      <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight mb-3">
+        1-Klik Kirim Film ke <span class="bg-gradient-to-r from-emerald-400 to-teal-300 bg-clip-text text-transparent">Google Drive</span>
+      </h1>
+      <p class="text-zinc-400 text-sm mb-6 max-w-2xl mx-auto leading-relaxed">
+        Pilih film/serial. Begitu Anda klik <strong class="text-white">Kirim ke Cloud</strong>, server cloud akan langsung memprosesnya. <strong>Laptop Anda bisa langsung dimatikan</strong> detik itu juga!
+      </p>
 
-          <!-- TV Season/Episode (shown when TV url is detected) -->
-          <div id="tv-fields" class="hidden grid grid-cols-2 gap-3 fade-in">
-            <div>
-              <label class="text-xs text-zinc-400 mb-1 block">Season</label>
-              <input id="input-season" type="number" min="1" value="1" class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-indigo-500 transition-colors">
-            </div>
-            <div>
-              <label class="text-xs text-zinc-400 mb-1 block">Episode</label>
-              <input id="input-episode" type="number" min="1" value="1" class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white focus:border-indigo-500 transition-colors">
-            </div>
-          </div>
-        </section>
-
-        <!-- Error Display -->
-        <div id="error-box" class="hidden glass rounded-xl p-4 border-red-500/30 fade-in flex items-start space-x-3">
-          <svg class="w-5 h-5 text-red-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>
-          <p class="text-sm text-red-400 flex-1" id="error-text"></p>
+      <!-- Search Box & Segment Filter -->
+      <div class="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-2.5 shadow-2xl shadow-black/60">
+        <!-- Segment Tabs -->
+        <div class="flex items-center justify-center space-x-1 mb-2.5 p-1 bg-zinc-950/80 rounded-xl max-w-xs mx-auto border border-zinc-800/80">
+          <button onclick="setMediaType('movie')" id="btnTabMovie" class="flex-1 py-1 px-3 text-xs font-semibold rounded-lg transition bg-white text-black shadow">Movies</button>
+          <button onclick="setMediaType('tv')" id="btnTabTv" class="flex-1 py-1 px-3 text-xs font-semibold rounded-lg transition text-zinc-400 hover:text-white">TV Series</button>
+          <button onclick="setMediaType('anime')" id="btnTabAnime" class="flex-1 py-1 px-3 text-xs font-semibold rounded-lg transition text-zinc-400 hover:text-white">Anime</button>
         </div>
 
-        <!-- Loading -->
-        <div id="loading-box" class="hidden glass rounded-xl p-6 flex items-center justify-center space-x-3 fade-in">
-          <div class="w-5 h-5 border-2 border-zinc-700 border-t-indigo-400 rounded-full animate-spin"></div>
-          <span class="text-sm text-zinc-400">Mengambil informasi & server stream...</span>
-        </div>
-
-        <!-- Results Section (ALWAYS VISIBLE DURING DOWNLOADS) -->
-        <section id="results-section" class="hidden space-y-4 fade-in">
-
-          <!-- Movie/TV/Anime Preview Card -->
-          <div id="media-preview-card" class="glass rounded-xl p-5 flex flex-col sm:flex-row gap-5 items-start">
-            <div class="w-24 sm:w-32 shrink-0 aspect-[2/3] bg-zinc-900 rounded-lg overflow-hidden border border-zinc-800 shadow-lg relative">
-              <img id="media-poster" src="" alt="Poster" class="w-full h-full object-cover hidden">
-              <div id="media-poster-placeholder" class="w-full h-full flex flex-col items-center justify-center text-zinc-600 p-2 text-center">
-                <svg class="w-8 h-8 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"/></svg>
-                <span class="text-[9px] font-mono">No Poster</span>
-              </div>
-            </div>
-            <div class="flex-1 min-w-0 space-y-2.5">
-              <div class="flex flex-wrap items-center gap-2">
-                <span id="badge-media-type" class="text-[10px] font-mono uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">Movie</span>
-                <span id="badge-year" class="text-xs text-zinc-400 font-mono">1999</span>
-                <span id="badge-rating" class="text-xs text-yellow-400 flex items-center space-x-1 font-semibold hidden">
-                  <span>★</span><span id="text-rating">0.0</span>
-                </span>
-                <span id="badge-provider" class="text-[10px] font-mono text-zinc-500 ml-auto">kategori: —</span>
-              </div>
-              <div>
-                <h2 id="media-title" class="text-lg sm:text-2xl font-bold text-white tracking-tight leading-tight">Judul Film</h2>
-              </div>
-              <div id="media-genres" class="flex flex-wrap gap-1.5"></div>
-              <p id="media-overview" class="text-xs text-zinc-400 leading-relaxed line-clamp-3"></p>
-            </div>
-          </div>
-
-          <!-- Episode Selector Section (Grid EP 1, EP 2, ...) -->
-          <div id="episode-selector-card" class="hidden glass rounded-xl p-5 space-y-3.5 fade-in">
-            <div class="flex items-center justify-between">
-              <div class="flex items-center space-x-2">
-                <span class="w-2 h-2 rounded-full bg-rose-400"></span>
-                <h3 class="text-xs font-mono font-semibold uppercase tracking-wider text-zinc-300">Pilih Episode</h3>
-                <span class="text-[10px] text-zinc-500 hidden sm:inline">(Klik nomor episode untuk memilih)</span>
-              </div>
-              <span id="episode-count-badge" class="text-[11px] font-mono text-zinc-400">Total 0 Episode</span>
-            </div>
-
-            <!-- Season Selector Tabs (visible for TV shows with seasons) -->
-            <div id="seasons-container" class="hidden space-y-1.5 pb-1 border-b border-zinc-800/80">
-              <div class="text-[10px] font-mono uppercase tracking-wider text-zinc-400">Pilih Season:</div>
-              <div id="seasons-bar" class="flex items-center space-x-2 overflow-x-auto pb-1"></div>
-            </div>
-
-            <div id="episodes-grid" class="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 gap-1.5 max-h-52 overflow-y-auto pr-1"></div>
-          </div>
-
-          <!-- Source & Provider Selection -->
-          <div id="sources-card" class="glass rounded-xl p-5 space-y-3">
-            <div class="flex items-center justify-between">
-              <div class="flex items-center space-x-2">
-                <h3 class="text-xs font-mono font-semibold uppercase tracking-wider text-zinc-400">Pilih Server Provider & Resolusi</h3>
-                <span id="active-providers-count" class="text-[10px] font-mono bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded">0 server aktif</span>
-              </div>
-            </div>
-            <div id="sources-loading" class="hidden py-4 text-center text-xs text-zinc-400 flex items-center justify-center space-x-2">
-              <div class="w-4 h-4 border-2 border-zinc-700 border-t-rose-400 rounded-full animate-spin"></div>
-              <span>Memeriksa server aktif...</span>
-            </div>
-            <div id="sources-empty-hint" class="hidden py-4 text-center text-xs text-zinc-500">
-              Pilih nomor episode di atas untuk memuat daftar server stream.
-            </div>
-            <div id="sources-list" class="space-y-1.5"></div>
-          </div>
-
-          <!-- Subtitle Selection -->
-          <div id="subtitles-section" class="glass rounded-xl p-5 space-y-3">
-            <div class="flex items-center justify-between">
-              <h3 class="text-xs font-mono font-semibold uppercase tracking-wider text-zinc-400">Pilih Subtitle (Opsional)</h3>
-              <button id="btn-select-all-subs" class="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors font-mono cursor-pointer">Toggle All</button>
-            </div>
-            <div id="subtitles-list" class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-48 overflow-y-auto pr-1"></div>
-          </div>
-
-          <!-- Filename Input -->
-          <div class="glass rounded-xl p-5 space-y-2">
-            <div class="flex items-center justify-between">
-              <label class="text-xs font-mono font-semibold uppercase tracking-wider text-zinc-400 block">Nama File Output</label>
-              <span class="text-[11px] text-zinc-500">Otomatis update sesuai resolusi & episode</span>
-            </div>
-            <input
-              id="input-filename"
-              type="text"
-              placeholder="Otomatis sesuai judul & resolusi"
-              class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:border-indigo-500 transition-colors"
-            >
-          </div>
-
-          <!-- Download Button -->
-          <button
-            id="btn-download"
-            class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all active:scale-[0.98] pulse-glow text-sm cursor-pointer shadow-lg shadow-indigo-600/30 flex items-center justify-center space-x-2"
+        <!-- Search Input -->
+        <div class="relative flex items-center">
+          <i data-lucide="search" class="w-5 h-5 text-zinc-400 absolute left-4"></i>
+          <input 
+            type="text" 
+            id="searchInput" 
+            placeholder="Ketik judul film/series (contoh: Inception, Fight Club, Breaking Bad, Naruto, Pokemon)..." 
+            class="w-full pl-12 pr-28 py-3.5 bg-zinc-950 border border-zinc-800 focus:border-emerald-500 rounded-xl text-sm text-white placeholder-zinc-500 outline-none transition"
+            onkeydown="if(event.key === 'Enter') triggerSearch()"
+          />
+          <button 
+            onclick="triggerSearch()" 
+            id="btnSearch"
+            class="absolute right-2 px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md transition cursor-pointer flex items-center space-x-1.5"
           >
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
-            </svg>
-            <span id="btn-download-text">Mulai Download Sekarang</span>
+            <span>Cari</span>
+            <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
           </button>
-        </section>
-
-        <!-- Active Downloads Section (NON-BLOCKING: Stays on page) -->
-        <section id="active-downloads-card" class="hidden glass rounded-xl p-5 space-y-3 border-indigo-500/30 fade-in">
-          <div class="flex items-center justify-between border-b border-zinc-800/80 pb-2.5">
-            <div class="flex items-center space-x-2">
-              <div class="w-2 h-2 rounded-full bg-indigo-400 animate-pulse"></div>
-              <h3 class="text-xs font-mono font-bold uppercase tracking-wider text-zinc-300">Antrean Unduhan Berjalan</h3>
-            </div>
-            <span id="active-tasks-count" class="text-[10px] font-mono text-zinc-400">1 task</span>
-          </div>
-
-          <!-- Dynamic Active Tasks List -->
-          <div id="active-tasks-list" class="space-y-3"></div>
-        </section>
-
+        </div>
       </div>
 
-      <!-- ══════════════════════════════════════════════════════════════════ -->
-      <!-- TAB 2: FILE TERSIMPAN (DOWNLOAD MANAGER DEDICATED MENU)           -->
-      <!-- ══════════════════════════════════════════════════════════════════ -->
-      <div id="tab-saved-files" class="hidden space-y-5 fade-in">
-        
-        <section class="glass rounded-xl p-5 space-y-4">
-          <!-- Header stats & actions -->
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800/80 pb-4">
-            <div>
-              <h2 class="text-base font-bold text-white">File Tersimpan di Server Lokal</h2>
-              <p class="text-xs text-zinc-400 mt-0.5">Semua file video MP4 dan subtitle hasil unduhan di direktori <code class="text-indigo-300 font-mono">downloads/</code></p>
-            </div>
-            <div class="flex items-center space-x-2">
-              <button id="btn-refresh-saved-tab" class="px-3 py-1.5 text-xs bg-zinc-900 border border-zinc-700 hover:border-zinc-500 text-zinc-200 rounded-lg transition-all flex items-center space-x-1.5 cursor-pointer">
-                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"/></svg>
-                <span>Refresh</span>
-              </button>
-            </div>
-          </div>
+      <!-- Quick Chips -->
+      <div class="flex flex-wrap items-center justify-center gap-2 mt-4 text-xs text-zinc-500">
+        <span>Cepat:</span>
+        <button onclick="quickSearch('Pokemon', 'tv')" class="hover:text-zinc-300 underline cursor-pointer text-emerald-400 font-semibold">Pokemon</button>
+        <span>•</span>
+        <button onclick="quickSearch('Fight Club', 'movie')" class="hover:text-zinc-300 underline cursor-pointer">Fight Club</button>
+        <span>•</span>
+        <button onclick="quickSearch('Inception', 'movie')" class="hover:text-zinc-300 underline cursor-pointer">Inception</button>
+        <span>•</span>
+        <button onclick="quickSearch('Breaking Bad', 'tv')" class="hover:text-zinc-300 underline cursor-pointer">Breaking Bad</button>
+        <span>•</span>
+        <button onclick="quickSearch('Attack on Titan', 'anime')" class="hover:text-zinc-300 underline cursor-pointer">Attack on Titan</button>
+      </div>
+    </section>
 
-          <!-- Search filter -->
-          <div class="flex items-center space-x-2">
-            <div class="relative flex-1">
-              <input
-                id="search-saved-files"
-                type="text"
-                placeholder="Cari file tersimpan..."
-                class="w-full bg-zinc-900 border border-zinc-800 rounded-lg pl-9 pr-4 py-2 text-xs text-white placeholder-zinc-500 focus:border-indigo-500 transition-colors"
-              >
-              <svg class="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/></svg>
-            </div>
-            <span id="saved-summary" class="text-xs font-mono text-zinc-400 shrink-0">0 file</span>
-          </div>
-
-          <!-- Downloads List -->
-          <div id="downloads-list" class="space-y-2 max-h-[65vh] overflow-y-auto pr-1">
-            <p class="text-xs text-zinc-500 py-8 text-center">Belum ada file di folder downloads.</p>
-          </div>
-        </section>
-
+    <!-- Results Section -->
+    <section>
+      <div class="flex items-center justify-between mb-4">
+        <h2 id="resultsHeading" class="text-lg font-bold tracking-tight text-white flex items-center space-x-2">
+          <span>Katalog Populer</span>
+        </h2>
+        <span id="resultsCount" class="text-xs font-mono text-zinc-500"></span>
       </div>
 
-    </div>
+      <!-- Loading Spinner -->
+      <div id="loadingIndicator" class="hidden py-20 text-center">
+        <div class="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+        <p class="text-xs font-mono text-zinc-400">Menghubungi frameXTV server...</p>
+      </div>
+
+      <!-- Grid Cards -->
+      <div id="resultsGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+        <!-- Rendered via JS -->
+      </div>
+
+      <!-- Empty State -->
+      <div id="emptyState" class="hidden py-16 text-center border border-dashed border-zinc-800 rounded-2xl bg-zinc-900/20">
+        <i data-lucide="film" class="w-12 h-12 text-zinc-600 mx-auto mb-2"></i>
+        <h3 class="text-sm font-semibold text-zinc-300">Tidak ada konten ditemukan</h3>
+        <p class="text-xs text-zinc-500 mt-1">Coba gunakan kata kunci lain atau pilih tab jenis media yang sesuai.</p>
+      </div>
+    </section>
   </main>
 
-  <!-- Toast Notification -->
-  <div id="toast" class="fixed bottom-5 right-5 z-50 hidden glass border-indigo-500/40 text-xs px-4 py-2.5 rounded-lg text-white shadow-xl flex items-center space-x-2 fade-in">
-    <svg class="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-    <span id="toast-text">Tersalin ke clipboard</span>
+  <!-- ======================================================== -->
+  <!-- MODAL DETAIL / TRANSFER KONTEN                           -->
+  <!-- ======================================================== -->
+  <div id="detailModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm hidden">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-3xl w-full max-h-[92vh] overflow-y-auto shadow-2xl relative">
+      
+      <!-- Close Button -->
+      <button onclick="closeDetailModal()" class="absolute top-4 right-4 z-10 w-8 h-8 rounded-full bg-black/60 hover:bg-black text-zinc-300 hover:text-white flex items-center justify-center cursor-pointer transition">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+
+      <!-- Banner Header -->
+      <div id="modalBackdrop" class="h-40 sm:h-52 bg-zinc-950 bg-cover bg-center relative">
+        <div class="absolute inset-0 bg-gradient-to-t from-zinc-900 via-zinc-900/60 to-transparent"></div>
+      </div>
+
+      <!-- Content Info -->
+      <div class="px-6 pb-6 pt-2 relative -mt-16 sm:-mt-20">
+        <div class="flex flex-col sm:flex-row gap-5 items-start">
+          <!-- Poster -->
+          <img id="modalPoster" src="" class="w-28 sm:w-36 aspect-[2/3] object-cover rounded-xl border-2 border-zinc-700 shadow-xl bg-zinc-950 shrink-0" />
+          
+          <div class="flex-1 min-w-0">
+            <div class="flex flex-wrap items-center gap-2 mb-1.5">
+              <span id="modalTypeBadge" class="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-emerald-950 border border-emerald-800 text-emerald-300 font-bold">MOVIE</span>
+              <span id="modalYear" class="text-xs font-mono text-zinc-400">2024</span>
+              <span id="modalRating" class="text-xs font-semibold text-amber-400 flex items-center gap-1">
+                <i data-lucide="star" class="w-3.5 h-3.5 fill-amber-400"></i> 8.5
+              </span>
+            </div>
+            <h3 id="modalTitle" class="text-xl sm:text-2xl font-black text-white leading-tight">Judul Film</h3>
+            <p id="modalTagline" class="text-xs text-emerald-400 italic mt-0.5 mb-2"></p>
+            <p id="modalOverview" class="text-xs text-zinc-400 line-clamp-3 leading-relaxed mb-3">Sinopsis...</p>
+          </div>
+        </div>
+
+        <!-- TV / Anime Controls (Season & Batch Episode Checkboxes) -->
+        <div id="tvControlsSection" class="mt-4 p-4 rounded-xl bg-zinc-950 border border-zinc-800 hidden space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2 text-xs font-semibold text-zinc-200">
+              <i data-lucide="tv" class="w-4 h-4 text-emerald-400"></i>
+              <span>Pilih Season & Centang Episode (Bisa Banyak Sekaligus)</span>
+            </div>
+            <span id="selectedEpisodesCounter" class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 font-bold">1 Episode Dipilih</span>
+          </div>
+
+          <!-- Season & Quick Action Buttons -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+            <div>
+              <label class="block text-[11px] font-mono text-zinc-400 mb-1">Pilih Season:</label>
+              <select id="selectSeason" onchange="onSeasonChange()" class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:border-emerald-500 font-mono">
+                <option value="1">Season 1</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-mono text-zinc-400 mb-1">Pilihan Cepat:</label>
+              <div class="flex items-center space-x-1.5">
+                <button type="button" onclick="selectAllEpisodes()" class="flex-1 py-1.5 px-2 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-[11px] text-zinc-200 font-medium transition cursor-pointer">
+                  ✓ Centang Semua
+                </button>
+                <button type="button" onclick="deselectAllEpisodes()" class="flex-1 py-1.5 px-2 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-[11px] text-zinc-400 hover:text-white transition cursor-pointer">
+                  Batal Pilih
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Episode Checkboxes Grid -->
+          <div>
+            <label class="block text-[11px] font-mono text-zinc-400 mb-1.5">
+              Daftar Episode Season Ini: (Centang kotak episode yang diinginkan)
+            </label>
+            <div id="episodesCheckboxesContainer" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 max-h-44 overflow-y-auto p-2.5 bg-zinc-900/80 rounded-xl border border-zinc-800">
+              <!-- Rendered by JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Spesifikasi Format File -->
+        <div class="mt-4 p-4 rounded-xl bg-zinc-950 border border-zinc-800/90 space-y-2">
+          <div class="flex items-center justify-between border-b border-zinc-800/60 pb-2">
+            <span class="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
+              <i data-lucide="file-video" class="w-4 h-4 text-emerald-400"></i>
+              Format File yang Akan Masuk ke Google Drive
+            </span>
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-800/60 font-bold">
+              MP4 1080p Full HD
+            </span>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1 text-xs">
+            <div class="p-2 rounded-lg bg-zinc-900/60 border border-zinc-800/50">
+              <span class="text-[10px] text-zinc-500 block font-mono">Format File</span>
+              <span class="font-bold text-white font-mono">MP4 (.mp4)</span>
+            </div>
+            <div class="p-2 rounded-lg bg-zinc-900/60 border border-zinc-800/50">
+              <span class="text-[10px] text-zinc-500 block font-mono">Resolusi Video</span>
+              <span class="font-bold text-white font-mono">1080p Full HD</span>
+            </div>
+            <div class="p-2 rounded-lg bg-zinc-900/60 border border-zinc-800/50">
+              <span class="text-[10px] text-zinc-500 block font-mono">Codec Video/Audio</span>
+              <span class="font-bold text-zinc-300 text-[11px]">H.264 / AAC</span>
+            </div>
+            <div class="p-2 rounded-lg bg-zinc-900/60 border border-zinc-800/50">
+              <span class="text-[10px] text-zinc-500 block font-mono">Format Subtitle</span>
+              <span class="font-bold text-zinc-300 text-[11px]">WebVTT (.vtt)</span>
+            </div>
+          </div>
+
+          <div class="text-[11px] font-mono text-zinc-400 pt-1 flex items-center justify-between">
+            <span>Nama File Output:</span>
+            <span id="modalFilenamePreview" class="text-emerald-400 font-bold truncate max-w-[280px]">video.mp4</span>
+          </div>
+        </div>
+
+        <!-- Target Info Box with Live Quota Info -->
+        <div class="mt-4 p-4 rounded-xl bg-emerald-950/20 border-2 border-emerald-500/40 space-y-2.5">
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-bold text-emerald-300 flex items-center gap-1.5">
+              <i data-lucide="cloud" class="w-4 h-4 text-emerald-400"></i>
+              Target Penyimpanan:
+            </span>
+            <span id="modalTargetEmail" class="text-[11px] font-mono text-emerald-400 font-bold">Belum Terhubung</span>
+          </div>
+          <div class="text-[11px] text-zinc-300 font-mono">
+            Folder: Google Drive > <span class="text-white font-bold">frameXTV_Downloads</span>
+          </div>
+
+          <!-- Live Quota Calculation in Modal -->
+          <div class="pt-2 border-t border-emerald-900/40 flex items-center justify-between text-xs">
+            <span class="text-zinc-400 flex items-center gap-1 text-[11px]">
+              <i data-lucide="gauge" class="w-3.5 h-3.5 text-emerald-400"></i>
+              Status Kuota GitHub Actions:
+            </span>
+            <span id="modalQuotaInfo" class="font-mono font-bold text-emerald-400 text-[11px]">1.997 / 2.000 menit riil (~998 judul)</span>
+          </div>
+
+          <div class="text-[11px] text-emerald-300/90 flex items-center gap-1.5 pt-0.5">
+            <i data-lucide="zap" class="w-3.5 h-3.5 text-emerald-400 shrink-0"></i>
+            <span>Dijalankan di Cloud Server 1 Gbps. Setelah diklik, laptop Anda bebas dimatikan detik itu juga!</span>
+          </div>
+        </div>
+
+        <!-- Video Player Preview Container -->
+        <div id="playerPreviewContainer" class="mt-4 hidden">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-mono text-zinc-400">Stream Live Preview</span>
+            <button onclick="closePlayerPreview()" class="text-xs text-red-400 hover:text-red-300">Tutup Player</button>
+          </div>
+          <div class="relative w-full aspect-video rounded-xl overflow-hidden bg-black border border-zinc-800">
+            <video id="previewVideoPlayer" controls class="w-full h-full"></video>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="mt-5 pt-4 border-t border-zinc-800 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+          <!-- LOCAL DOWNLOAD BUTTON -->
+          <button 
+            id="btnExecuteLocalDownload"
+            onclick="triggerLocalDownload()" 
+            class="flex-1 flex items-center justify-center space-x-2 py-3.5 px-5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs shadow-lg shadow-indigo-600/30 transition cursor-pointer active:scale-95"
+          >
+            <i data-lucide="download" class="w-4 h-4"></i>
+            <span>📥 Unduh ke Komputer (Lokal)</span>
+          </button>
+
+          <!-- 1-CLICK CLOUD RUNNER BUTTON -->
+          <button 
+            id="btnExecuteCloud"
+            onclick="triggerCloudTransfer()" 
+            class="flex-1 flex items-center justify-center space-x-2 py-3.5 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs shadow-lg shadow-emerald-600/30 transition cursor-pointer active:scale-95"
+          >
+            <i data-lucide="cloud-lightning" class="w-4 h-4"></i>
+            <span>🚀 1-Klik Kirim ke Cloud</span>
+          </button>
+
+          <!-- Preview Player -->
+          <button onclick="previewStreamVideo()" class="py-3.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-semibold transition cursor-pointer flex items-center justify-center space-x-1" title="Putar preview di browser">
+            <i data-lucide="play" class="w-4 h-4 text-emerald-400"></i>
+            <span class="hidden md:inline">Preview</span>
+          </button>
+        </div>
+
+      </div>
+    </div>
   </div>
 
-  <!-- Footer -->
-  <footer class="border-t border-zinc-800/60 px-4 py-3 mt-auto">
-    <div class="max-w-4xl mx-auto flex items-center justify-between text-[10px] text-zinc-600 font-mono">
-      <span>StreamDown v1.3.0</span>
-      <span>FFmpeg remuxer &middot; Batch background downloads</span>
-    </div>
-  </footer>
+  <!-- ======================================================== -->
+  <!-- MODAL PERHITUNGAN KUOTA MESIN SERVER CLOUD (BARU)        -->
+  <!-- ======================================================== -->
+  <div id="cloudQuotaModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm hidden">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-xl w-full p-6 shadow-2xl relative space-y-5">
+      <!-- Header -->
+      <div class="flex items-center justify-between pb-3 border-b border-zinc-800">
+        <div class="flex items-center space-x-2.5">
+          <div class="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+            <i data-lucide="gauge" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-white">Perhitungan Kuota Mesin Server Cloud</h3>
+            <p class="text-[11px] text-zinc-400 font-mono">GitHub Actions Cloud Runner • Siklus Bulanan</p>
+          </div>
+        </div>
+        <button onclick="closeCloudQuotaModal()" class="text-zinc-400 hover:text-white">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
 
-  <script src="/static/app.js"></script>
+      <!-- Main Quota Meter Progress Bar -->
+      <div class="p-4 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2">
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-zinc-400 font-medium">Pemakaian Bulan Ini:</span>
+          <span id="quotaPercentLabel" class="font-bold text-emerald-400 font-mono">0.15% Terpakai</span>
+        </div>
+        <div class="w-full bg-zinc-900 rounded-full h-3 overflow-hidden border border-zinc-800">
+          <div id="quotaProgressBar" class="bg-gradient-to-r from-emerald-500 to-teal-400 h-full rounded-full transition-all duration-500" style="width: 0.15%"></div>
+        </div>
+        <div class="flex items-center justify-between text-[11px] font-mono text-zinc-500">
+          <span id="quotaUsedText">3 menit terpakai</span>
+          <span id="quotaTotalText">Batas Gratis: 2.000 menit/bulan</span>
+        </div>
+      </div>
+
+      <!-- 4 Stat Breakdown Cards -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <div class="p-3 rounded-xl bg-zinc-950 border border-zinc-800/80">
+          <span class="text-[10px] text-zinc-400 block font-mono">Menit Terpakai</span>
+          <strong id="statUsedMin" class="text-base text-white font-mono">3 m</strong>
+          <span class="text-[10px] text-zinc-500 block">Bulan berjalan</span>
+        </div>
+
+        <div class="p-3 rounded-xl bg-zinc-950 border border-emerald-500/30">
+          <span class="text-[10px] text-zinc-400 block font-mono">Sisa Kuota</span>
+          <strong id="statRemainingMin" class="text-base text-emerald-400 font-mono">1.997 m</strong>
+          <span class="text-[10px] text-emerald-400/80 block">dari 2.000 m</span>
+        </div>
+
+        <div class="p-3 rounded-xl bg-zinc-950 border border-zinc-800/80">
+          <span class="text-[10px] text-zinc-400 block font-mono">Estimasi Sisa</span>
+          <strong id="statEstItems" class="text-base text-white font-mono">~998</strong>
+          <span class="text-[10px] text-zinc-500 block">Film / Episode</span>
+        </div>
+
+        <div class="p-3 rounded-xl bg-zinc-950 border border-zinc-800/80">
+          <span class="text-[10px] text-zinc-400 block font-mono">Reset Otomatis</span>
+          <strong id="statResetDate" class="text-xs text-zinc-300 font-mono block pt-1">1 Des 2026</strong>
+          <span class="text-[10px] text-zinc-500 block">Tanggal 1 awal bulan</span>
+        </div>
+      </div>
+
+      <!-- Repository Breakdown Section -->
+      <div>
+        <h4 class="text-xs font-bold text-zinc-300 uppercase tracking-wider mb-2 flex items-center justify-between">
+          <span>Rincian Penggunaan per Repository di Akun Anda</span>
+          <span id="statAccountTotalRuns" class="text-[10px] text-emerald-400 font-mono">Total Akun</span>
+        </h4>
+        <div id="repoBreakdownContainer" class="space-y-1.5 max-h-36 overflow-y-auto mb-3">
+          <!-- Rendered by JS -->
+        </div>
+      </div>
+
+      <!-- History of Recent Cloud Transfers -->
+      <div>
+        <h4 class="text-xs font-bold text-zinc-300 uppercase tracking-wider mb-2 flex items-center justify-between">
+          <span>Riwayat Transfer Cloud</span>
+          <span id="statMonthRuns" class="text-[10px] text-emerald-400 font-mono">1 transfer</span>
+        </h4>
+        <div id="recentTransfersContainer" class="space-y-1.5 max-h-36 overflow-y-auto">
+          <!-- Rendered by JS -->
+        </div>
+      </div>
+
+      <!-- Footer Info & Direct Billing Link -->
+      <div class="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2 text-xs">
+        <div class="text-[11px] text-zinc-400 leading-relaxed flex items-start gap-2">
+          <i data-lucide="shield-check" class="w-4 h-4 text-emerald-400 shrink-0 mt-0.5"></i>
+          <span>
+            Perhitungan ini mencakup <strong>seluruh repository di akun GitHub Anda</strong>, sinkron 100% dengan halaman billing GitHub resmi.
+          </span>
+        </div>
+        <div class="pt-2 border-t border-zinc-800/80 flex items-center justify-between text-xs">
+          <span class="text-zinc-400">Verifikasi di halaman resmi:</span>
+          <a href="https://github.com/settings/billing/usage?period=3&group=2" target="_blank" class="text-emerald-400 hover:text-emerald-300 font-bold underline flex items-center gap-1">
+            <span>Buka Billing Usage GitHub</span>
+            <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+          </a>
+        </div>
+      </div>
+
+      <div class="flex justify-end pt-2 border-t border-zinc-800">
+        <button onclick="closeCloudQuotaModal()" class="px-5 py-2 bg-zinc-800 hover:bg-zinc-700 text-white font-semibold text-xs rounded-xl">
+          Tutup
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- MODAL SUKSES CLOUD DISPATCH                              -->
+  <!-- ======================================================== -->
+  <div id="cloudSuccessModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm hidden">
+    <div class="bg-zinc-900 border border-emerald-500/50 rounded-2xl max-w-md w-full p-6 shadow-2xl relative text-center space-y-4">
+      <div class="w-14 h-14 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto border border-emerald-500/30">
+        <i data-lucide="check-check" class="w-8 h-8"></i>
+      </div>
+
+      <h3 class="text-lg font-black text-white">Perintah Diterima Cloud Server!</h3>
+      
+      <p class="text-xs text-zinc-300 leading-relaxed">
+        Server cloud (GitHub Azure 1 Gbps) sedang menyedot video dan menyimpannya langsung ke Google Drive <strong id="successGdriveEmail" class="text-emerald-400 font-mono">Google Drive</strong>.
+      </p>
+
+      <div class="p-3.5 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-left space-y-1.5 font-mono">
+        <div class="text-zinc-400">🎬 Judul: <span id="successTitle" class="text-white font-bold">-</span></div>
+        <div class="text-zinc-400">📁 Folder: <span class="text-emerald-400">frameXTV_Downloads</span></div>
+        <div class="text-zinc-400">⚡ Status: <span class="text-emerald-400">Running in Cloud</span></div>
+      </div>
+
+      <div class="p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/40 text-[11px] text-emerald-200 text-left flex items-start gap-2">
+        <i data-lucide="power" class="w-4 h-4 text-emerald-400 shrink-0 mt-0.5"></i>
+        <span><strong>Laptop Anda bisa langsung dimatikan sekarang!</strong> Proses cloud akan terus berjalan otomatis sampai video masuk ke Drive Anda.</span>
+      </div>
+
+      <button onclick="document.getElementById('cloudSuccessModal').classList.add('hidden')" class="w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white font-semibold text-xs rounded-xl">
+        Oke, Mengerti
+      </button>
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- MODAL SETUP GITHUB CLOUD RUNNER                          -->
+  <!-- ======================================================== -->
+  <div id="githubConfigModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm hidden">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+      <div class="flex items-center justify-between mb-4 pb-3 border-b border-zinc-800">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="github" class="w-5 h-5 text-white"></i>
+          <h3 class="text-sm font-bold text-white">Hubungkan GitHub Cloud Runner</h3>
+        </div>
+        <button onclick="closeGithubConfigModal()" class="text-zinc-400 hover:text-white">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3.5 text-xs">
+        <p class="text-zinc-300 leading-relaxed text-[11px]">
+          Hubungkan sekali saja agar tombol di dashboard ini bisa langsung menyuruh server cloud GitHub mendownload dan mengupload ke Google Drive Anda secara otomatis.
+        </p>
+
+        <div>
+          <label class="block font-semibold text-zinc-200 mb-1">GitHub Repository (owner/repo)</label>
+          <input type="text" id="inputGithubRepo" placeholder="Contoh: username/streamdown" class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-white outline-none focus:border-emerald-500" />
+        </div>
+
+        <div>
+          <label class="block font-semibold text-zinc-200 mb-1">GitHub Personal Access Token (PAT)</label>
+          <input type="password" id="inputGithubToken" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-white outline-none focus:border-emerald-500" />
+          <a href="https://github.com/settings/tokens/new?scopes=repo,workflow&description=streamdown-cloud-runner" target="_blank" class="text-[10px] text-emerald-400 hover:underline mt-1 inline-flex items-center gap-1">
+            Klik di sini untuk buat token GitHub otomatis ↗
+          </a>
+        </div>
+      </div>
+
+      <div class="mt-5 flex justify-end space-x-2 pt-3 border-t border-zinc-800">
+        <button onclick="closeGithubConfigModal()" class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-xs font-medium rounded-lg text-zinc-300">Batal</button>
+        <button onclick="saveGithubConfig()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-xs font-bold rounded-lg text-white">Simpan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- FLOATING LIVE DOWNLOAD PROGRESS WIDGET                   -->
+  <!-- ======================================================== -->
+  <div id="liveDownloadWidget" class="fixed bottom-6 right-6 z-50 max-w-sm w-full bg-zinc-900/95 border border-indigo-500/50 backdrop-blur-md rounded-2xl p-4 shadow-2xl space-y-3 hidden transition-all duration-300">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center space-x-2.5 overflow-hidden">
+        <div class="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
+          <i data-lucide="arrow-down-circle" id="dlWidgetIcon" class="w-4 h-4 animate-bounce"></i>
+        </div>
+        <div class="overflow-hidden">
+          <h4 class="text-xs font-bold text-white truncate max-w-[200px]" id="dlWidgetTitle">Mengunduh...</h4>
+          <p class="text-[10px] text-zinc-400 font-mono" id="dlWidgetStatus">Menyiapkan stream...</p>
+        </div>
+      </div>
+      <button onclick="cancelActiveDownload()" id="btnCancelDownload" class="text-zinc-400 hover:text-red-400 text-xs px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 font-mono transition">
+        Batal
+      </button>
+    </div>
+    <div class="space-y-1.5">
+      <div class="flex items-center justify-between text-[11px] font-mono">
+        <span id="dlWidgetProgressPercent" class="text-indigo-400 font-bold">0%</span>
+        <span id="dlWidgetSpeedEta" class="text-zinc-400">0 KB/s • --:--</span>
+      </div>
+      <div class="w-full bg-zinc-800 rounded-full h-2.5 overflow-hidden border border-zinc-700/50">
+        <div id="dlWidgetProgressBar" class="bg-gradient-to-r from-indigo-500 via-purple-500 to-teal-400 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- MODAL FILE TERSIMPAN (LOCAL DOWNLOADS MANAGER)           -->
+  <!-- ======================================================== -->
+  <div id="localDownloadsModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm hidden">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative space-y-4">
+      <!-- Header -->
+      <div class="flex items-center justify-between pb-3 border-b border-zinc-800">
+        <div class="flex items-center space-x-2.5">
+          <div class="w-9 h-9 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+            <i data-lucide="folder-down" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-white">File Tersimpan (Download Manager)</h3>
+            <p class="text-[11px] text-zinc-400 font-mono">Direktori penyimpanan lokal: <span class="text-indigo-400 font-bold">downloads/</span></p>
+          </div>
+        </div>
+        <button onclick="closeLocalDownloadsModal()" class="text-zinc-400 hover:text-white">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- File List Container -->
+      <div id="localFilesContainer" class="space-y-2 max-h-96 overflow-y-auto pr-1">
+        <!-- Rendered by JS -->
+      </div>
+
+      <!-- Footer -->
+      <div class="flex items-center justify-between pt-3 border-t border-zinc-800 text-xs">
+        <span id="localFilesSummary" class="text-zinc-400 font-mono">0 file tersimpan</span>
+        <button onclick="closeLocalDownloadsModal()" class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white font-semibold text-xs rounded-xl transition">
+          Tutup
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-6 right-6 z-50 bg-zinc-900 border border-zinc-700 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-2 text-xs transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
+    <i data-lucide="info" class="w-4 h-4 text-emerald-400"></i>
+    <span id="toastMessage">Pesan</span>
+  </div>
+
+  <!-- Application Logic -->
+  <script src="/static/js/app.js"></script>
 </body>
 </html>

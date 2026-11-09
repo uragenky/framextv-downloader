@@ -20,17 +20,27 @@ if [ ! -x "$SCRIPT_DIR/bin/ffmpeg" ]; then
     echo "[StreamDown] FFmpeg installed successfully."
 fi
 
+# ── Check Cloudflare WARP (Bypass ISP / DPI Blocking) ──────────────────────
+if command -v powershell.exe >/dev/null 2>&1; then
+    WARP_STATUS=$(powershell.exe -Command "warp-cli status" 2>/dev/null || true)
+    if echo "$WARP_STATUS" | grep -qi "Disconnected"; then
+        echo "[StreamDown] Cloudflare WARP terdeteksi Disconnected. Menyambungkan..."
+        powershell.exe -Command "warp-cli --accept-tos connect" >/dev/null 2>&1 || true
+        sleep 2
+    fi
+fi
+
 # ── Ensure downloads directory exists ────────────────────────────────────────
 mkdir -p "$SCRIPT_DIR/downloads"
 
 # ── Resolve host and port from env or defaults ──────────────────────────────
 HOST="${STREAMDOWN_HOST:-0.0.0.0}"
-PORT="${STREAMDOWN_PORT:-8000}"
+PORT="${STREAMDOWN_PORT:-5000}"
 
 echo ""
 echo "  ┌──────────────────────────────────────────┐"
-echo "  │          StreamDown v1.0.0                │"
-echo "  │     FrameX Movie/TV Downloader            │"
+echo "  │             StreamDown v2.0               │"
+echo "  │     FrameX Movie/TV/Anime Downloader      │"
 echo "  ├──────────────────────────────────────────┤"
 echo "  │  Server : http://${HOST}:${PORT}              │"
 echo "  │  FFmpeg : $(bin/ffmpeg -version 2>/dev/null | head -n1 | cut -d' ' -f3 || echo 'N/A')  │"
@@ -39,7 +49,7 @@ echo "  └───────────────────────
 echo ""
 
 # ── Start server ─────────────────────────────────────────────────────────────
-exec python3 -m uvicorn app.main:app \
+exec python3 -m uvicorn app:app \
     --host "$HOST" \
     --port "$PORT" \
     --log-level info

@@ -1,0 +1,71 @@
+name: frameXTV to Google Drive (Cloud-to-Cloud Runner)
+
+on:
+  workflow_dispatch:
+    inputs:
+      title:
+        description: 'Judul Film / Series / Anime'
+        required: true
+        type: string
+        default: 'Pokemon'
+      media_type:
+        description: 'Tipe Media'
+        required: true
+        type: choice
+        options:
+          - 'movie'
+          - 'tv'
+          - 'anime'
+        default: 'tv'
+      season:
+        description: 'Nomor Season (TV/Anime)'
+        required: false
+        type: number
+        default: 1
+      episodes:
+        description: 'Nomor Episode (bisa single: 1, multiple: 1,2,3, atau range: 1-10)'
+        required: false
+        type: string
+        default: '1'
+      gdrive_folder:
+        description: 'Folder di Google Drive'
+        required: false
+        type: string
+        default: 'frameXTV_Downloads'
+
+jobs:
+  transfer:
+    name: Cloud Transfer to Google Drive
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+
+      - name: Install Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install yt-dlp google-api-python-client google-auth
+
+      - name: Run Cloud Transfer (Batch Support)
+        env:
+          GDRIVE_TOKEN_JSON: ${{ secrets.GDRIVE_TOKEN_JSON }}
+          INPUT_TITLE: ${{ inputs.title }}
+          INPUT_TYPE: ${{ inputs.media_type }}
+          INPUT_SEASON: ${{ inputs.season }}
+          INPUT_EPISODES: ${{ inputs.episodes }}
+          INPUT_FOLDER: ${{ inputs.gdrive_folder }}
+        run: |
+          python scripts/cloud_transfer.py

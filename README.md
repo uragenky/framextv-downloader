@@ -1,154 +1,166 @@
-# StreamDown
+# 🎬 StreamDown — FrameX Movie, TV & Anime Downloader
 
-**FrameX Movie & TV Downloader** — Web application untuk mengunduh film, serial TV, dan anime dari FrameX ke file MP4 lokal dengan pilihan resolusi, subtitle, pratinjau judul/poster, dan Download Manager lokal terintegrasi.
-
-## Fitur Unggulan
-
-- **Navigasi Menu Terpisah (Tabs)** — Sistem tab modern di header:
-  - **📥 Unduh Stream**: Area kerja input link, pratinjau judul, pemilihan episode, dan pemilihan provider.
-  - **📁 File Tersimpan**: Menu Download Manager tersendiri lengkap dengan counter badge, pencarian/filter, download langsung, salin link, dan hapus file.
-- **Download Non-Blocking (Tanpa Pindah Halaman)** — Saat tombol download diklik, halaman dan daftar episode **tidak hilang**:
-  - Anda bisa langsung memilih episode berikutnya (`EP 2`, `EP 3`, dst.) dan langsung mendownload tanpa perlu cek link ulang dari awal.
-  - Antrean unduhan aktif berjalan di bawah tombol download secara bersamaan dengan progress bar masing-masing.
-- **Dukungan Penuh Serial TV & Anime** — Mendukung link anime (`framextv.xyz/anime/182255`) dan serial TV (`framextv.xyz/tv/209867`):
-  - **Pemilih Season**: Beralih antar Season (Season 1, Season 2, Specials, dll.) secara instan.
-  - **Grid Episode Interaktif**: Menampilkan seluruh tombol episode (`EP 1`, `EP 2`, ..., `EP 38`).
-  - Penamaan file otomatis standar scene (contoh: `Frieren: Beyond Journey's End S01E01 [1080p].mp4`).
-- **Multi-Provider Paralel Aktif** — Memindai seluruh server stream penyedia secara bersamaan (Grand Warden, Wizard, Healer, Archer, Bowler, Super Barbarian, dll.) dan menampilkan seluruh server yang aktif dan terbukti dapat diunduh (termasuk opsi Subtitle & Dubbing).
-- **Resolver Master Playlist HLS** — Secara otomatis membaca dan mengurai HLS Master Playlist (`#EXT-X-STREAM-INF`) ke resolusi tertinggi (1080p Full HD) untuk pengunduhan segmen video TS yang utuh.
-- **Pratinjau Film & Serial Lengkap** — Menampilkan poster resmi, judul asli, tahun rilis, rating, genre, dan sinopsis secara instan setelah link dicek.
-- **Penamaan File Otomatis & Dinamis** — Nama file output otomatis disesuaikan dengan judul dan resolusi yang dipilih (contoh: `Fight Club (1999) [720p].mp4` atau `Frieren Beyond Journey's End Season 2 EP01 [1080p].mp4`), tetap dapat diedit secara manual.
-- **Pilihan Resolusi Fleksibel** — Menampilkan semua sumber video aktif (1080p, 720p, 480p, MP4 direct / HLS stream) beserta server penyedia.
-- **Pilihan Subtitle Terintegrasi** — Unduh subtitle dalam berbagai bahasa (otomatis dikonversi ke format `.srt` dan `.vtt`).
-- **Progress Real-time** — Live progress bar via Server-Sent Events (SSE): persentase, kecepatan download, dan estimasi waktu selesai (ETA).
-- **Remux Lossless Cepat** — Segmen HLS digabungkan ke format MP4 via FFmpeg tanpa proses re-encoding (`-c copy`), instan dan tanpa penurunan kualitas video.
-- **Retry Otomatis** — Proteksi kegagalan unduh segmen dengan retry hingga 5x dan exponential backoff.
-- **Dark Theme UI** — Antarmuka modern, responsif, dan elegan berbasis Tailwind CSS.
+Aplikasi modern untuk mencari dan mengunduh media (Film Bioskop, Serial TV Barat/Drakor, dan Anime) dari engine aggregator FrameX dengan **Dukungan Ganda**:
+1. **📥 Download Langsung ke Komputer Lokal** lengkap dengan antrean real-time progress bar (kecepatan MB/s, persentase, ETA), penanaman subtitle otomatis (*Soft Subtitle* via FFmpeg), dan Download Manager lokal.
+2. **🚀 1-Klik Cloud Runner (FrameX → Google Drive)** via GitHub Actions (kecepatan 1 Gbps datacenter) tanpa menyedot kuota internet atau beban laptop.
 
 ---
 
-## Prasyarat
+## 🌟 Fitur Utama
 
-| Komponen | Kebutuhan | Keterangan |
-|----------|:---------:|------------|
-| Python   | 3.10+     | Runtime backend utama |
-| Pip Packages | — | `fastapi`, `uvicorn`, `aiohttp` |
-| FFmpeg   | 5.0+      | Otomatis diunduh oleh `run.sh` jika belum tersedia |
+- 🔍 **Pencarian Multi-Media & Smart URL Resolver:**
+  - Cari judul film, serial, atau anime langsung melalui search bar.
+  - Dukungan paste URL FrameX langsung (contoh: `https://framextv.cc/tv/279246` atau `https://framextv.cc/watch/550`) atau TMDB ID angka.
+- 📥 **Download Langsung ke Local (`downloads/`):**
+  - Download video HLS / MP4 menggunakan engine paralel multi-thread (`yt-dlp` & FFmpeg static).
+  - Floating live progress widget: memantau persentase unduhan, kecepatan download (MB/s), estimasi waktu selesai (ETA), dan status proses.
+  - Tombol batal (*cancel*) sewaktu-waktu.
+- 📁 **Download Manager Lokal (File Tersimpan):**
+  - Akses riwayat unduhan lokal dengan badge counter file tersimpan di header.
+  - Unduh langsung ke browser, salin tautan file, atau hapus file dari disk.
+- 💬 **Subtitle Terembed Otomatis:**
+  - Subtitle (Bahasa Indonesia / Inggris) otomatis diunduh dan ditanamkan langsung ke dalam file video `.mp4` secara lossless via FFmpeg (`mov_text`).
+  - File subtitle `.vtt` terpisah juga ikut disimpan di folder `downloads/`.
+- 📦 **Batch Multi-Episode (Checkboxes):**
+  - Centang beberapa episode sekaligus (misal Ep 1, 2, 3, 4, 5) untuk diproses bertahap baik untuk unduhan lokal maupun transfer cloud.
+- ⚡ **1-Klik Cloud Runner (Google Drive):**
+  - Opsi transfer langsung ke Google Drive via GitHub Actions tanpa membebani laptop.
+- 📡 **Multi-Host Failover & Multi-Provider Fallback:**
+  - Rotasi otomatis backend host (`api.framextv.cc`, `api.framextv.tech`, `api.framextv.xyz`, `api.framextv.pro`).
+  - Auto-fallback provider jika server utama gagal (`bowler`, `super_barbarian`, `giant`, `sparky`, `royal_champion`, `titan`).
+- 🛡️ **Auto-Connect Cloudflare WARP / DPI Bypass:**
+  - Mendeteksi dan otomatis menyambungkan Cloudflare WARP jika terputus, mengatasi pemblokiran ISP / Connection Reset.
 
-### Instalasi Dependensi Python
+---
+
+## 📋 Prasyarat
+
+- **Python**: Versi 3.10 atau lebih baru
+- **FFmpeg & FFprobe**: Versi static x64 otomatis diunduh oleh `run.sh` ke folder `bin/` jika belum tersedia
+- **Koneksi Internet**: Jika menggunakan ISP di Indonesia yang memblokir domain streaming, aktifkan Cloudflare WARP (`warp-cli connect`)
+
+---
+
+## 🚀 Instalasi & Persiapan
 
 ```bash
-pip install fastapi uvicorn aiohttp
+# Clone repository
+git clone git@github.com:uragenky/framextv-downloader.git streamdown
+cd streamdown
+
+# Install dependensi Python
+pip install -r requirements.txt
 ```
 
 ---
 
-## Quick Start
+## 💻 Cara Menjalankan
 
+### 1. Mode Web Dashboard (Rekomendasi)
+
+Jalankan script `run.sh`:
 ```bash
-# Masuk ke direktori
-cd streamdown
-
-# Jalankan server (FFmpeg static binary akan otomatis disiapkan)
 chmod +x run.sh
 ./run.sh
 ```
+Aplikasi web akan aktif di: **`http://localhost:5000`**
 
-Aplikasi dapat langsung diakses melalui browser di:  
-**`http://localhost:8000`**
+Untuk menjalankan di port lain:
+```bash
+STREAMDOWN_PORT=8888 ./run.sh
+```
 
-### Kustomisasi Host & Port
+### 2. Integrasi WSL Dashboard
+
+Jika Anda menggunakan WSL Dashboard (`~/dash` di port `4000`), StreamDown sudah terdaftar sebagai service `streamdown` di port `5000`:
+- Buka dashboard di `http://localhost:4000`
+- Kelola start, stop, restart, dan pantau log live StreamDown langsung dari browser.
+
+### 3. Mode Antarmuka Baris Perintah (CLI)
+
+StreamDown juga menyediakan CLI mandiri melalui `cli.py`:
 
 ```bash
-STREAMDOWN_HOST=0.0.0.0 STREAMDOWN_PORT=3000 ./run.sh
+# Cari judul
+python3 cli.py search "Inception" --type movie
+python3 cli.py search "The Remarried Empress" --type tv
+
+# Cek status server provider
+python3 cli.py providers --type movie
+
+# Mengambil link stream m3u8 langsung
+python3 cli.py stream 279246 --type tv --season 1 --episode 1
+
+# Download langsung via terminal
+python3 cli.py download "The Remarried Empress" --type tv --season 1 --episode 1 --dest ./downloads
 ```
 
 ---
 
-## Cara Penggunaan
+## ☁️ Konfigurasi Cloud Runner (Opsional)
 
-1. Buka `http://localhost:8000` di web browser.
-2. Salin dan tempel link FrameX atau masukkan TMDB ID langsung:
-   - Contoh Film: `https://framextv.xyz/watch/550` atau cukup `550`
-   - Contoh TV: `https://framextv.xyz/tv/1399` (input Season & Episode akan otomatis muncul)
-3. Klik tombol **Cek Link**.
-4. Periksa kartu pratinjau: poster, judul, dan sinopsis film akan muncul untuk memastikan film yang dipilih sudah benar.
-5. Pilih salah satu resolusi video (nama file akan otomatis ter-update dengan tag resolusi).
-6. Centang subtitle yang ingin disertakan jika diperlukan.
-7. Klik **Mulai Download Sekarang**.
-8. Pantau progress bar secara real-time.
-9. Setelah selesai, file akan tercantum di bagian **Download Manager** di bawah halaman untuk diunduh, disalin link-nya, atau dihapus jika sudah tidak dibutuhkan.
+Jika ingin memanfaatkan fitur transfer cloud ke Google Drive via GitHub Actions:
+1. Hubungkan repository GitHub Anda melalui modal **Setup Cloud** di header web.
+2. Masukkan Personal Access Token (PAT) GitHub dengan scope `repo` & `workflow`.
+3. Pasang GitHub Actions secret `GDRIVE_TOKEN_JSON` pada repository GitHub Anda yang berisi credential OAuth Google Drive Anda.
+4. Klik tombol **Transfer ke Google Drive (Cloud Runner)** pada modal detail film/serial.
 
 ---
 
-### Format Link yang Didukung
-
-| Jenis Konten | Contoh Format Input |
-|--------------|-------------------|
-| Film | `https://framextv.xyz/watch/550` |
-| Film | `https://framextv.xyz/movie/550` |
-| Film | `https://framextv.xyz/embed/550` |
-| Film | `550` (TMDB ID angka langsung) |
-| Serial TV | `https://framextv.xyz/watch/1399/1/1` |
-| Serial TV | `https://framextv.xyz/tv/1399` (pilih Season & Episode) |
-| Serial TV | `https://framextv.xyz/embed/tv/1399/1/1` |
-| Anime | `https://framextv.xyz/watch/anime/12345/1` |
-| Anime | `https://framextv.xyz/anime/12345` |
-
----
-
-## Struktur Direktori
+## 📁 Struktur Direktori
 
 ```
 streamdown/
-├── app/
-│   ├── __init__.py
-│   ├── config.py            # Konfigurasi path, port, URL endpoint FrameX
-│   ├── parser.py            # Regex parser URL FrameX & TMDB ID
-│   ├── framex_client.py     # Klien async stream & metadata TMDB
-│   ├── downloader.py        # Mesin unduh HLS/MP4 + remuxer FFmpeg
-│   └── main.py              # Server FastAPI, API routes & static mount
-├── static/
-│   ├── index.html           # Web UI frontend (Tailwind CSS dark mode)
-│   └── app.js               # Interaksi UI, SSE progress & Download Manager
+├── .github/
+│   └── workflows/
+│       └── transfer.yml     # Workflow GitHub Actions Cloud Runner
+├── app.py                   # Server FastAPI, API routes & static mount
+├── cli.py                   # Antarmuka CLI untuk pencarian & download
+├── run.sh                   # Script peluncur satu perintah (auto WARP & FFmpeg)
+├── requirements.txt         # Dependensi Python
+├── config.example.json      # Contoh konfigurasi
 ├── bin/
-│   ├── ffmpeg               # Binary static FFmpeg x64 (auto-download)
-│   └── ffprobe              # Binary static FFprobe x64 (auto-download)
-├── downloads/               # Direktori penyimpanan file lokal MP4 & SRT
-├── run.sh                   # Script peluncur satu perintah
-├── .gitignore
-└── README.md
+│   ├── ffmpeg               # Binary static FFmpeg x64
+│   └── ffprobe              # Binary static FFprobe x64
+├── downloads/               # Direktori penyimpanan file lokal MP4 & VTT
+├── scripts/
+│   └── cloud_transfer.py    # Runner transfer GitHub Actions
+├── src/
+│   ├── api/
+│   │   └── client.py        # Klien multi-host API FrameX
+│   ├── downloader/
+│   │   ├── hls.py           # Downloader stream HLS
+│   │   └── manager.py       # Download Manager lokal & task registry
+│   └── uploader/
+│       └── gdrive.py        # Integrasi Google Drive
+└── static/
+    ├── index.html           # Web UI frontend (Tailwind CSS dark mode)
+    └── js/
+        └── app.js           # Frontend logic, SSE progress & modal manager
 ```
 
 ---
 
-## API Endpoints
+## 🛠️ Ringkasan API Endpoints
 
 | Method | Endpoint | Deskripsi |
 |:------:|----------|-----------|
-| `GET`  | `/` | Halaman Web UI |
-| `POST` | `/api/inspect` | Mengambil metadata judul, poster, resolusi, dan subtitle |
-| `POST` | `/api/download` | Memulai background download task |
-| `GET`  | `/api/progress/{task_id}` | Event stream SSE progress real-time |
-| `POST` | `/api/cancel/{task_id}` | Membatalkan download yang sedang berjalan |
-| `GET`  | `/api/downloads` | Mendapatkan daftar semua file tersimpan di folder downloads |
-| `GET`  | `/api/files/{filename}` | Mengunduh file MP4 / SRT lokal |
+| `GET`  | `/` | Halaman Web Dashboard |
+| `GET`  | `/api/search?q={query}&type={type}` | Pencarian judul atau parse URL FrameX |
+| `GET`  | `/api/details?id={id}&type={type}` | Mengambil metadata judul, season, cast, dsb. |
+| `GET`  | `/api/stream?id={id}&type={type}&season={s}&episode={e}` | Mengambil link stream video |
+| `POST` | `/api/download/local` | Memulai proses download lokal ke `downloads/` |
+| `GET`  | `/api/download/progress/{task_id}` | Event stream SSE progress download lokal real-time |
+| `POST` | `/api/download/cancel/{task_id}` | Membatalkan download yang sedang berjalan |
+| `GET`  | `/api/downloads` | Daftar seluruh file yang tersimpan di folder downloads |
+| `GET`  | `/api/files/{filename}` | Mengunduh file dari folder downloads |
 | `DELETE` | `/api/files/{filename}` | Menghapus file lokal dari disk |
-| `GET`  | `/api/health` | Status kesiapan server dan FFmpeg |
+| `GET`  | `/api/gdrive/status` | Status autentikasi Google Drive |
+| `GET`  | `/api/github/status` | Status konfigurasi GitHub Cloud Runner |
+| `POST` | `/api/cloud-dispatch` | Memicu GitHub Actions Cloud Runner ke Google Drive |
 
 ---
 
-## Troubleshooting
-
-| Gejala | Penyebab & Solusi |
-|--------|------------------|
-| *FFmpeg missing* | Jalankan `./run.sh`, skrip akan otomatis mengunduh binary resmi Linux-x64 ke folder `bin/` |
-| *HTTP 502 / Error Cek Link* | Pastikan ID TMDB valid dan koneksi internet stabil |
-| *Download gagal di tengah jalan* | Sistem otomatis mencoba ulang (retry 5x per segmen). Jika koneksi lambat, kurangi nilai `MAX_CONCURRENT_SEGMENTS` di `app/config.py` |
-| *File tidak bisa dihapus* | Pastikan proses download untuk file tersebut sudah selesai atau dibatalkan |
-
----
-
-## Lisensi
+## 📜 Lisensi
 
 MIT License
