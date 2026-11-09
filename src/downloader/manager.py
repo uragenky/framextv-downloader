@@ -22,7 +22,7 @@ from typing import Optional, Dict, Any, List, Callable
 import yt_dlp
 
 from ..api.client import FrameXClient
-from .sub_translator import translate_subtitle_file
+from .sub_translator import translate_subtitle_file, normalize_subtitle_file
 
 logger = logging.getLogger("local_downloader")
 
@@ -379,14 +379,20 @@ class LocalDownloadManager:
                 if sub_url:
                     vtt_name = f"{final_mp4_path.stem}.id.vtt"
                     vtt_file_path = DOWNLOADS_DIR / vtt_name
+                    srt_name = f"{final_mp4_path.stem}.id.srt"
+                    srt_file_path = DOWNLOADS_DIR / srt_name
                     try:
                         req_sub = urllib.request.Request(sub_url, headers={"User-Agent": "Mozilla/5.0"})
                         with urllib.request.urlopen(req_sub, timeout=12) as s_resp, open(vtt_file_path, "wb") as sf:
                             sf.write(s_resp.read())
+                        # Normalisasi format timestamps (titik untuk VTT) & bersihkan tag SSA
+                        normalize_subtitle_file(vtt_file_path, vtt_file_path, srt_file_path)
                         target_sub_path = vtt_file_path
                         target_sub_lang = "ind"
                         task.subtitles_files.append(vtt_name)
-                        logger.info(f"Subtitle Indonesia langsung disimpan: {vtt_name}")
+                        if srt_file_path.exists():
+                            task.subtitles_files.append(srt_name)
+                        logger.info(f"Subtitle Indonesia langsung disimpan & dinormalisasi: {vtt_name}")
                     except Exception as e_sub_dl:
                         logger.warning(f"Gagal unduh file subtitle Indonesia: {e_sub_dl}")
             else:
@@ -415,6 +421,7 @@ class LocalDownloadManager:
                         req_sub = urllib.request.Request(sub_url, headers={"User-Agent": "Mozilla/5.0"})
                         with urllib.request.urlopen(req_sub, timeout=12) as s_resp, open(vtt_file_path, "wb") as sf:
                             sf.write(s_resp.read())
+                        normalize_subtitle_file(vtt_file_path, vtt_file_path)
                         task.subtitles_files.append(vtt_name)
                         target_sub_path = vtt_file_path
                         target_sub_lang = "eng" if src_sub_lang in ["en", "eng"] else src_sub_lang
@@ -443,25 +450,36 @@ class LocalDownloadManager:
                                 target_sub_path = translated_vtt_path
                                 target_sub_lang = "ind"
                                 task.subtitles_files.append(translated_vtt_name)
+                                srt_candidate = translated_vtt_path.with_suffix(".srt")
+                                if srt_candidate.exists():
+                                    task.subtitles_files.append(srt_candidate.name)
                                 logger.info(f"Auto-translate sukses! Track MP4 akan menggunakan: {translated_vtt_name}")
                     except Exception as e_sub_dl:
                         logger.warning(f"Gagal mengunduh/menerjemahkan subtitle: {e_sub_dl}")
 
-        # 4. Embed subtitle jika tersedia via FFmpeg
+        # 4. Embed subtitle jika tersedia via FFmpeg (dengan default & forced flag agar selalu auto-enable)
         task.status = "embedding"
         task.speed_str = "Menanamkan subtitle ke MP4..."
         task.percent = 99.5
         embedded_success = False
         if target_sub_path and target_sub_path.exists() and FFMPEG_BIN.exists():
             embedded_temp_path = DOWNLOADS_DIR / f".embed_{task.task_id}_{final_filename}"
+            sub_title_label = "Indonesian" if target_sub_lang in ["id", "ind"] else "English"
             import subprocess
             cmd = [
                 str(FFMPEG_BIN), "-y",
                 "-i", str(temp_dl_path),
                 "-i", str(target_sub_path),
-                "-c", "copy",
+                "-map", "0:v",
+                "-map", "0:a?",
+                "-map", "1:s:0",
+                "-c:v", "copy",
+                "-c:a", "copy",
                 "-c:s", "mov_text",
                 "-metadata:s:s:0", f"language={target_sub_lang}",
+                "-metadata:s:s:0", f"title={sub_title_label}",
+                "-metadata:s:s:0", f"handler_name={sub_title_label}",
+                "-disposition:s:0", "default+forced",
                 "-movflags", "+faststart",
                 str(embedded_temp_path)
             ]
@@ -472,12 +490,13 @@ class LocalDownloadManager:
                         temp_dl_path.unlink()
                     embedded_temp_path.rename(final_mp4_path)
                     embedded_success = True
-                    logger.info(f"Subtitle berhasil diembed ke {final_filename}")
+                    logger.info(f"Subtitle ({sub_title_label}) berhasil diembed (default+forced) ke {final_filename}")
             except Exception as e_embed:
                 logger.warning(f"Gagal embed subtitle via FFmpeg: {e_embed}")
             finally:
                 if embedded_temp_path.exists():
                     try: embedded_temp_path.unlink()
+                    except: pass
                     except: pass
 
         if not embedded_success:

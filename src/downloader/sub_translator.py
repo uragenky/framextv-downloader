@@ -1,7 +1,8 @@
 """
-StreamDown — Subtitle Auto-Translator Module.
+StreamDown — Subtitle Auto-Translator & Normalizer Module.
 Mendukung penerjemahan otomatis file WebVTT / SRT (misalnya English -> Bahasa Indonesia)
-menggunakan multiple engine fallback (Bing, Google, Alibaba, Caiyun, MyMemory).
+serta normalisasi penanda waktu (timestamps) dan pembersihan tag SSA/ASS agar
+subtitle selalu valid, terbaca, dan otomatis aktif di seluruh media player.
 """
 
 from __future__ import annotations
@@ -34,6 +35,38 @@ def normalize_lang_code(code: str) -> str:
     return c
 
 
+def normalize_vtt_timestamp(ts: str) -> str:
+    """
+    Format WebVTT wajib menggunakan tanda titik (.) untuk pemisah milidetik.
+    Contoh: 00:02:44,456 --> 00:02:46,708  =>  00:02:44.456 --> 00:02:46.708
+    """
+    clean = ts.strip()
+    return re.sub(r'(\d{2}:\d{2}:\d{2}),(\d{3})', r'\1.\2', clean)
+
+
+def normalize_srt_timestamp(ts: str) -> str:
+    """
+    Format SubRip (SRT) wajib menggunakan tanda koma (,) untuk pemisah milidetik.
+    Contoh: 00:02:44.456 --> 00:02:46.708  =>  00:02:44,456 --> 00:02:46,708
+    """
+    clean = ts.strip()
+    return re.sub(r'(\d{2}:\d{2}:\d{2})\.(\d{3})', r'\1,\2', clean)
+
+
+def clean_subtitle_text(text: str) -> str:
+    """
+    Membersihkan tag SSA/ASS seperti {\\an8}, {\\pos(..)} yang tidak didukung
+    oleh mov_text / WebVTT dan seringkali menyebabkan subtitle tidak tampil di media player.
+    """
+    if not text:
+        return ""
+    # Hapus tag kurung kurawal seperti {\an8}, {\pos(x,y)}, dll
+    cleaned = re.sub(r'\{[^}]*\}', '', text)
+    # Rapikan spasi berlebih per baris
+    lines = [re.sub(r'[ \t]+', ' ', line).strip() for line in cleaned.splitlines()]
+    return "\n".join(line for line in lines if line)
+
+
 def parse_vtt_cues(content: str) -> Tuple[str, List[Dict]]:
     """
     Mem-parse isi file WebVTT/SRT menjadi header string dan list dictionary cue.
@@ -41,12 +74,12 @@ def parse_vtt_cues(content: str) -> Tuple[str, List[Dict]]:
     """
     normalized = content.replace("\r\n", "\n").replace("\r", "\n")
     lines = normalized.split("\n")
-    
+
     header_lines = []
     cues = []
     i = 0
-    
-    # Ambil header WebVTT
+
+    # Ambil header WebVTT jika ada
     if lines and "WEBVTT" in lines[0].upper():
         while i < len(lines):
             header_lines.append(lines[i])
@@ -54,12 +87,8 @@ def parse_vtt_cues(content: str) -> Tuple[str, List[Dict]]:
                 i += 1
                 break
             i += 1
-            
-    header = "\n".join(header_lines).strip()
-    if not header:
-        header = "WEBVTT\n"
-    else:
-        header = header + "\n\n"
+
+    header = "WEBVTT\n"
 
     # Parse setiap blok cue
     while i < len(lines):
@@ -92,25 +121,67 @@ def parse_vtt_cues(content: str) -> Tuple[str, List[Dict]]:
             cues.append({
                 "id": cue_id,
                 "timestamp": timestamp,
-                "text": "\n".join(dialog_lines)
+                "text": clean_subtitle_text("\n".join(dialog_lines))
             })
 
     return header, cues
 
 
-def build_vtt_content(header: str, cues: List[Dict]) -> str:
+def build_vtt_content(cues: List[Dict]) -> str:
     """
-    Menyusun kembali teks WebVTT dari header dan list cues yang telah diterjemahkan.
+    Menyusun kembali teks WebVTT yang 100% valid sesuai spesifikasi RFC WebVTT
+    (diawali WEBVTT, pemisah milidetik tanda titik).
     """
-    out = [header.strip()]
-    out.append("")
+    out = ["WEBVTT", ""]
     for idx, cue in enumerate(cues, 1):
-        c_id = cue.get("id") or str(idx)
+        c_id = str(idx)
         out.append(c_id)
-        out.append(cue["timestamp"])
-        out.append(cue["text"])
+        out.append(normalize_vtt_timestamp(cue["timestamp"]))
+        out.append(clean_subtitle_text(cue["text"]))
         out.append("")
     return "\n".join(out)
+
+
+def build_srt_content(cues: List[Dict]) -> str:
+    """
+    Menyusun kembali teks SubRip (.srt) standar
+    (tanpa header WEBVTT, pemisah milidetik tanda koma).
+    """
+    out = []
+    for idx, cue in enumerate(cues, 1):
+        c_id = str(idx)
+        out.append(c_id)
+        out.append(normalize_srt_timestamp(cue["timestamp"]))
+        out.append(clean_subtitle_text(cue["text"]))
+        out.append("")
+    return "\n".join(out)
+
+
+def normalize_subtitle_file(src_path: Path, dest_vtt_path: Path, dest_srt_path: Optional[Path] = None) -> bool:
+    """
+    Memastikan subtitle apapun (SRT atau VTT dari sumber luar) dinormalisasi
+    sehingga format timestamp-nya valid untuk FFmpeg mov_text demuxer.
+    """
+    try:
+        if not src_path.exists() or src_path.stat().st_size == 0:
+            return False
+
+        content = src_path.read_text(encoding="utf-8", errors="replace")
+        _, cues = parse_vtt_cues(content)
+        if not cues:
+            return False
+
+        vtt_text = build_vtt_content(cues)
+        dest_vtt_path.write_text(vtt_text, encoding="utf-8")
+
+        if dest_srt_path:
+            srt_text = build_srt_content(cues)
+            dest_srt_path.write_text(srt_text, encoding="utf-8")
+
+        return True
+    except Exception as e:
+        logger.warning(f"Gagal normalisasi subtitle {src_path}: {e}")
+        return False
 
 
 def translate_cues(
@@ -200,7 +271,7 @@ def translate_cues(
                 translated_texts.append(trans_single or t)
 
         for idx, trans_text in enumerate(translated_texts):
-            translated_cues[start_idx + idx]["text"] = trans_text
+            translated_cues[start_idx + idx]["text"] = clean_subtitle_text(trans_text)
 
         if progress_callback:
             try:
@@ -220,7 +291,7 @@ def translate_subtitle_file(
 ) -> bool:
     """
     Menerjemahkan file subtitle (.vtt atau .srt) dari bahasa sumber ke bahasa tujuan.
-    Menyimpan hasilnya ke dest_path dalam format WebVTT yang valid.
+    Menyimpan hasilnya ke dest_path dalam format WebVTT yang valid dan SRT standar.
     """
     try:
         if not src_path.exists() or src_path.stat().st_size == 0:
@@ -228,7 +299,7 @@ def translate_subtitle_file(
             return False
 
         content = src_path.read_text(encoding="utf-8", errors="replace")
-        header, cues = parse_vtt_cues(content)
+        _, cues = parse_vtt_cues(content)
 
         if not cues:
             logger.warning(f"Tidak ada cue subtitle yang dapat dibaca dari {src_path}")
@@ -243,9 +314,16 @@ def translate_subtitle_file(
             progress_callback=progress_callback
         )
 
-        new_content = build_vtt_content(header, translated_cues)
-        dest_path.write_text(new_content, encoding="utf-8")
-        logger.info(f"Subtitle berhasil diterjemahkan dan disimpan: {dest_path.name}")
+        # 1. Simpan versi WebVTT (titik untuk milidetik, valid untuk FFmpeg mov_text)
+        new_vtt = build_vtt_content(translated_cues)
+        dest_path.write_text(new_vtt, encoding="utf-8")
+
+        # 2. Simpan juga versi SRT berdampingan (misal .id.srt)
+        dest_srt = dest_path.with_suffix(".srt")
+        new_srt = build_srt_content(translated_cues)
+        dest_srt.write_text(new_srt, encoding="utf-8")
+
+        logger.info(f"Subtitle berhasil disimpan: {dest_path.name} & {dest_srt.name}")
         return True
 
     except Exception as e:
