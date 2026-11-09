@@ -495,9 +495,10 @@ class LocalDownloadManager:
                 logger.warning(f"Gagal embed subtitle via FFmpeg: {e_embed}")
             finally:
                 if embedded_temp_path.exists():
-                    try: embedded_temp_path.unlink()
-                    except: pass
-                    except: pass
+                    try:
+                        embedded_temp_path.unlink()
+                    except Exception:
+                        pass
 
         if not embedded_success:
             temp_dl_path.rename(final_mp4_path)
