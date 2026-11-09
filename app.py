@@ -274,10 +274,30 @@ def api_download_tasks():
     return {"success": True, "tasks": local_dl_manager.list_tasks()}
 
 
+@app.get("/api/download/queue")
+def api_download_queue():
+    """Mengambil status ringkasan antrean unduhan batch."""
+    return {"success": True, "queue": local_dl_manager.get_queue_summary()}
+
+
 @app.post("/api/download/cancel/{task_id}")
 def api_download_cancel(task_id: str):
     success = local_dl_manager.cancel_task(task_id)
     return {"success": success}
+
+
+@app.post("/api/download/retry/{task_id}")
+def api_download_retry(task_id: str):
+    """Mencoba ulang unduhan yang gagal atau dibatalkan."""
+    success = local_dl_manager.retry_task(task_id)
+    return {"success": success}
+
+
+@app.post("/api/download/cancel-all")
+def api_download_cancel_all():
+    """Membatalkan seluruh antrean download."""
+    cancelled_count = local_dl_manager.cancel_all()
+    return {"success": True, "cancelled_count": cancelled_count}
 
 
 @app.get("/api/downloads")

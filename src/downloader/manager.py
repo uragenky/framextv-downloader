@@ -15,6 +15,8 @@ import shutil
 import logging
 import threading
 import urllib.request
+import urllib.parse
+import subprocess
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List, Callable
@@ -29,6 +31,8 @@ logger = logging.getLogger("local_downloader")
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 DOWNLOADS_DIR = BASE_DIR / "downloads"
 BIN_DIR = BASE_DIR / "bin"
+if BIN_DIR.exists():
+    os.environ["PATH"] = f"{BIN_DIR}:{os.environ.get('PATH', '')}"
 FFMPEG_BIN = BIN_DIR / "ffmpeg" if (BIN_DIR / "ffmpeg").exists() else Path("ffmpeg")
 
 DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
@@ -132,6 +136,21 @@ class LocalDownloadManager:
         self.client = FrameXClient()
         self.queue: List[str] = []
         self.is_worker_running = False
+        # Bersihkan file temporary sisa crash/reboot sebelumnya
+        self._cleanup_orphan_temps()
+
+    def _cleanup_orphan_temps(self):
+        try:
+            for p in DOWNLOADS_DIR.glob(".tmp_*"):
+                if p.is_file():
+                    try: p.unlink()
+                    except: pass
+            for p in DOWNLOADS_DIR.glob(".embed_*"):
+                if p.is_file():
+                    try: p.unlink()
+                    except: pass
+        except Exception:
+            pass
 
     def get_task(self, task_id: str) -> Optional[DownloadTask]:
         with self.lock:
@@ -146,11 +165,61 @@ class LocalDownloadManager:
             task = self.tasks.get(task_id)
             if task:
                 task.is_cancelled = True
-                if task.status in ["queued", "resolving", "downloading"]:
+                if task.status in ["queued", "resolving", "downloading", "translating_sub", "embedding"]:
                     task.status = "cancelled"
                     task.error = "Download dibatalkan oleh pengguna."
+                if task_id in self.queue:
+                    self.queue.remove(task_id)
                 return True
         return False
+
+    def retry_task(self, task_id: str) -> bool:
+        with self.lock:
+            task = self.tasks.get(task_id)
+            if not task:
+                return False
+            task.is_cancelled = False
+            task.status = "queued"
+            task.error = ""
+            task.percent = 0.0
+            task.downloaded_bytes = 0
+            task.speed_str = "0 KB/s"
+            task.eta_str = "--:--"
+            if task_id not in self.queue:
+                self.queue.append(task_id)
+        self._ensure_worker()
+        return True
+
+    def cancel_all(self) -> int:
+        count = 0
+        with self.lock:
+            for task_id in list(self.queue):
+                task = self.tasks.get(task_id)
+                if task:
+                    task.is_cancelled = True
+                    task.status = "cancelled"
+                    task.error = "Download dibatalkan secara massal."
+                    count += 1
+            self.queue.clear()
+            for task in self.tasks.values():
+                if task.status in ["resolving", "downloading", "embedding", "translating_sub"]:
+                    task.is_cancelled = True
+                    task.status = "cancelled"
+                    task.error = "Download dibatalkan secara massal."
+                    count += 1
+        return count
+
+    def get_queue_summary(self) -> Dict[str, Any]:
+        with self.lock:
+            tasks_list = [t.to_dict() for t in sorted(self.tasks.values(), key=lambda x: x.created_at, reverse=True)]
+            queued_count = sum(1 for t in self.tasks.values() if t.status == "queued")
+            active_tasks = [t.to_dict() for t in self.tasks.values() if t.status in ["resolving", "downloading", "embedding", "translating_sub"]]
+            return {
+                "active": active_tasks[0] if active_tasks else None,
+                "queued_count": queued_count,
+                "total_count": len(self.tasks),
+                "tasks": tasks_list
+            }
 
     def create_task(
         self,
@@ -228,40 +297,33 @@ class LocalDownloadManager:
         logger.info(f"Mulai mendownload: {task.title} (ID: {task.task_id})")
         task.status = "resolving"
 
-        # 1. Ambil URL stream aktif
+        # 1. Tentukan kandidat provider untuk fallback pipeline
+        candidate_providers = []
+        if task.provider:
+            candidate_providers.append(task.provider)
+
         try:
-            stream_data = self.client.get_stream(
-                media_type=task.media_type,
-                media_id=task.media_id,
-                season=task.season,
-                episode=task.episode,
-                provider=task.provider or None,
-                auto_fallback=True
-            )
-        except Exception as e:
-            task.status = "failed"
-            task.error = f"Gagal mengekstrak link stream: {e}"
-            return
+            prov_list = self.client.get_providers(task.media_type)
+            active_provs = [p["id"] for p in prov_list if p.get("status") in ["available", "active"]]
+        except Exception as e_prov:
+            logger.warning(f"Gagal mengambil provider list: {e_prov}")
+            active_provs = []
 
-        sources = stream_data.get("sources", [])
-        if not sources or not stream_data.get("success"):
-            task.status = "failed"
-            task.error = "Tidak ada server stream video yang aktif."
-            return
+        # Urutan prioritas server yang terbukti stabil
+        priority_servers = ["giant", "battle_copter", "bowler", "executioner", "little_prince", "grand_warden", "sparky", "super_barbarian"]
+        for p in priority_servers:
+            if p in active_provs and p not in candidate_providers:
+                candidate_providers.append(p)
+        for p in active_provs:
+            if p not in candidate_providers:
+                candidate_providers.append(p)
 
-        stream_url = sources[0]["url"]
-        task.provider = stream_data.get("provider", "default")
-        quality = sources[0].get("quality", "HD")
+        if not candidate_providers:
+            candidate_providers = ["giant", "battle_copter", "bowler", "default"]
 
-        if task.is_cancelled:
-            task.status = "cancelled"
-            return
-
-        # Output file paths
         final_filename = f"{task.filename}.mp4"
         final_mp4_path = DOWNLOADS_DIR / final_filename
-        
-        # Hindari overwrite file dengan menambah counter jika nama sudah ada
+
         counter = 1
         base_name = task.filename
         while final_mp4_path.exists():
@@ -270,9 +332,8 @@ class LocalDownloadManager:
             counter += 1
 
         temp_dl_path = DOWNLOADS_DIR / f".tmp_{task.task_id}_{final_filename}"
-        task.status = "downloading"
 
-        # 2. Download menggunakan yt-dlp dengan progress hook
+        # 2. Progress Hook untuk yt-dlp
         def ytdl_progress_hook(d):
             if task.is_cancelled:
                 raise DownloadCancelledError("Download dibatalkan oleh pengguna.")
@@ -284,7 +345,6 @@ class LocalDownloadManager:
                 speed = d.get("speed", 0)
                 eta = d.get("eta", 0)
 
-                # Fragments progress jika HLS
                 frag_index = d.get("fragment_index")
                 frag_count = d.get("fragment_count")
 
@@ -300,47 +360,128 @@ class LocalDownloadManager:
                 task.eta_seconds = eta or 0.0
                 task.eta_str = format_time(eta)
 
-        ydl_opts = {
-            "outtmpl": str(temp_dl_path),
-            "concurrent_fragment_downloads": 16,
-            "retries": 10,
-            "fragment_retries": 10,
-            "skip_unavailable_fragments": True,
-            "nocheckcertificate": True,
-            "quiet": True,
-            "no_warnings": True,
-            "progress_hooks": [ytdl_progress_hook],
-            "http_headers": {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                "Referer": "https://framextv.cc/",
-                "Origin": "https://framextv.cc",
-            },
-        }
+        download_success = False
+        attempted_logs = []
 
-        if FFMPEG_BIN.exists():
-            ydl_opts["ffmpeg_location"] = str(FFMPEG_BIN.parent)
+        # 3. Iterasi Fallback Antar Server & Sumber Stream
+        for prov_idx, prov in enumerate(candidate_providers):
+            if task.is_cancelled:
+                break
 
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([stream_url])
-        except DownloadCancelledError:
+            task.status = "resolving"
+            task.provider = prov
+            task.speed_str = f"Mencoba server {prov} ({prov_idx + 1}/{len(candidate_providers)})..."
+            logger.info(f"[{task.filename}] Mencoba server {prov} ({prov_idx + 1}/{len(candidate_providers)})")
+
+            try:
+                stream_data = self.client.get_stream(
+                    media_type=task.media_type,
+                    media_id=task.media_id,
+                    season=task.season,
+                    episode=task.episode,
+                    provider=prov,
+                    auto_fallback=False
+                )
+            except Exception as e_stream:
+                logger.warning(f"Server {prov} gagal diambil stream: {e_stream}")
+                attempted_logs.append(f"{prov}: {e_stream}")
+                continue
+
+            sources = stream_data.get("sources", [])
+            if not sources or not stream_data.get("success"):
+                attempted_logs.append(f"{prov}: tidak ada sources")
+                continue
+
+            for src_idx, source in enumerate(sources):
+                if task.is_cancelled:
+                    break
+
+                stream_url = source.get("url")
+                if not stream_url:
+                    continue
+
+                task.status = "downloading"
+                quality = source.get("quality", "HD")
+                task.speed_str = f"Menghubungkan {prov} ({quality})..."
+
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                    "Referer": "https://framextv.cc/",
+                    "Origin": "https://framextv.cc",
+                }
+                if "origin=" in stream_url or "ref=" in stream_url:
+                    try:
+                        parsed_u = urllib.parse.urlparse(stream_url)
+                        qs = urllib.parse.parse_qs(parsed_u.query)
+                        if "origin" in qs:
+                            headers["Origin"] = qs["origin"][0]
+                        if "ref" in qs or "referer" in qs:
+                            headers["Referer"] = qs.get("ref", qs.get("referer", []))[0]
+                    except Exception:
+                        pass
+
+                ydl_opts = {
+                    "outtmpl": str(temp_dl_path),
+                    "concurrent_fragment_downloads": 4,  # Aman dari CDN rate-limit & socket drops
+                    "retries": 20,
+                    "fragment_retries": 20,
+                    "skip_unavailable_fragments": True,
+                    "nocheckcertificate": True,
+                    "quiet": True,
+                    "no_warnings": True,
+                    "progress_hooks": [ytdl_progress_hook],
+                    "http_headers": headers,
+                }
+                if BIN_DIR.exists():
+                    ydl_opts["ffmpeg_location"] = str(BIN_DIR)
+
+                try:
+                    if temp_dl_path.exists():
+                        try: temp_dl_path.unlink()
+                        except: pass
+
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.download([stream_url])
+
+                except DownloadCancelledError:
+                    task.status = "cancelled"
+                    task.error = "Download dibatalkan oleh pengguna."
+                    if temp_dl_path.exists():
+                        try: temp_dl_path.unlink()
+                        except: pass
+                    return
+                except Exception as e_dl:
+                    logger.warning(f"Server {prov} (source #{src_idx}) gagal unduh: {e_dl}. Mencoba server cadangan...")
+                    attempted_logs.append(f"{prov} src#{src_idx}: {e_dl}")
+                    if temp_dl_path.exists():
+                        try: temp_dl_path.unlink()
+                        except: pass
+                    continue
+
+                if temp_dl_path.exists() and temp_dl_path.stat().st_size > 1024 * 100:
+                    download_success = True
+                    task.provider = prov
+                    logger.info(f"[{task.filename}] Berhasil download dari server {prov} ({quality})! Ukuran: {format_bytes(temp_dl_path.stat().st_size)}")
+                    break
+
+            if download_success:
+                break
+
+        if task.is_cancelled:
             task.status = "cancelled"
-            task.error = "Download dibatalkan."
+            task.error = "Download dibatalkan oleh pengguna."
             if temp_dl_path.exists():
-                temp_dl_path.unlink()
-            return
-        except Exception as e:
-            task.status = "failed"
-            task.error = f"Gagal mengunduh stream video: {e}"
-            if temp_dl_path.exists():
-                temp_dl_path.unlink()
+                try: temp_dl_path.unlink()
+                except: pass
             return
 
-        if not temp_dl_path.exists() or temp_dl_path.stat().st_size < 1024 * 100:
+        if not download_success:
             task.status = "failed"
-            task.error = "File hasil unduhan kosong atau rusak."
+            task.error = f"Semua server stream gagal ({len(candidate_providers)} server telah dicoba)."
+            logger.error(f"Download gagal total untuk {task.filename}: {'; '.join(attempted_logs[:3])}")
             if temp_dl_path.exists():
-                temp_dl_path.unlink()
+                try: temp_dl_path.unlink()
+                except: pass
             return
 
         # 3. Subtitles Processing
@@ -465,7 +606,6 @@ class LocalDownloadManager:
         if target_sub_path and target_sub_path.exists() and FFMPEG_BIN.exists():
             embedded_temp_path = DOWNLOADS_DIR / f".embed_{task.task_id}_{final_filename}"
             sub_title_label = "Indonesian" if target_sub_lang in ["id", "ind"] else "English"
-            import subprocess
             cmd = [
                 str(FFMPEG_BIN), "-y",
                 "-i", str(temp_dl_path),

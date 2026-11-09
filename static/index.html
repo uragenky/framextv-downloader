@@ -582,21 +582,29 @@
   <!-- ======================================================== -->
   <!-- FLOATING LIVE DOWNLOAD PROGRESS WIDGET                   -->
   <!-- ======================================================== -->
-  <div id="liveDownloadWidget" class="fixed bottom-6 right-6 z-50 max-w-sm w-full bg-zinc-900/95 border border-indigo-500/50 backdrop-blur-md rounded-2xl p-4 shadow-2xl space-y-3 hidden transition-all duration-300">
+  <div id="liveDownloadWidget" class="fixed bottom-6 right-6 z-50 max-w-sm sm:max-w-md w-full bg-zinc-900/95 border border-indigo-500/50 backdrop-blur-md rounded-2xl p-4 shadow-2xl space-y-3 hidden transition-all duration-300">
     <div class="flex items-center justify-between">
       <div class="flex items-center space-x-2.5 overflow-hidden">
         <div class="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
           <i data-lucide="arrow-down-circle" id="dlWidgetIcon" class="w-4 h-4 animate-bounce"></i>
         </div>
         <div class="overflow-hidden">
-          <h4 class="text-xs font-bold text-white truncate max-w-[200px]" id="dlWidgetTitle">Mengunduh...</h4>
-          <p class="text-[10px] text-zinc-400 font-mono" id="dlWidgetStatus">Menyiapkan stream...</p>
+          <h4 class="text-xs font-bold text-white truncate max-w-[180px] sm:max-w-[220px]" id="dlWidgetTitle">Mengunduh...</h4>
+          <p class="text-[10px] text-zinc-400 font-mono truncate" id="dlWidgetStatus">Menyiapkan stream...</p>
         </div>
       </div>
-      <button onclick="cancelActiveDownload()" id="btnCancelDownload" class="text-zinc-400 hover:text-red-400 text-xs px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 font-mono transition">
-        Batal
-      </button>
+      <div class="flex items-center space-x-1.5 shrink-0">
+        <button onclick="toggleQueueDrawer()" id="btnToggleQueue" class="text-[11px] text-indigo-300 hover:text-white px-2 py-1 rounded-lg bg-indigo-950/70 border border-indigo-800/80 font-mono transition flex items-center space-x-1">
+          <span id="dlQueueBadge">Antrean (0)</span>
+          <i data-lucide="chevron-down" id="dlQueueChevron" class="w-3.5 h-3.5 transition-transform duration-200"></i>
+        </button>
+        <button onclick="cancelActiveDownload()" id="btnCancelDownload" class="text-zinc-400 hover:text-red-400 text-xs px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 font-mono transition" title="Batalkan unduhan saat ini">
+          Batal
+        </button>
+      </div>
     </div>
+    
+    <!-- Progress Bar -->
     <div class="space-y-1.5">
       <div class="flex items-center justify-between text-[11px] font-mono">
         <span id="dlWidgetProgressPercent" class="text-indigo-400 font-bold">0%</span>
@@ -604,6 +612,17 @@
       </div>
       <div class="w-full bg-zinc-800 rounded-full h-2.5 overflow-hidden border border-zinc-700/50">
         <div id="dlWidgetProgressBar" class="bg-gradient-to-r from-indigo-500 via-purple-500 to-teal-400 h-full rounded-full transition-all duration-300" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <!-- Collapsible Queue Drawer -->
+    <div id="dlQueueDrawer" class="hidden pt-2 border-t border-zinc-800/80 space-y-2 max-h-56 overflow-y-auto pr-1">
+      <div class="flex items-center justify-between text-[11px]">
+        <span class="text-zinc-400 font-medium">Daftar Antrean Batch</span>
+        <button onclick="cancelAllDownloads()" class="text-red-400 hover:text-red-300 text-[10px] font-mono transition hover:underline">Batalkan Semua</button>
+      </div>
+      <div id="dlQueueItemsList" class="space-y-1.5 text-xs">
+        <!-- Rendered by JS -->
       </div>
     </div>
   </div>

@@ -29,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchGdriveStatus();
   fetchCloudQuota();
   fetchLocalDownloadsCount();
+  startQueuePolling();
 });
 
 function showToast(message, isError = false) {
@@ -748,6 +749,8 @@ async function fetchLocalDownloadsCount() {
   }
 }
 
+let queuePollInterval = null;
+
 async function triggerLocalDownload() {
   if (!selectedItem) return;
 
@@ -782,9 +785,11 @@ async function triggerLocalDownload() {
 
     if (json.success && json.tasks && json.tasks.length > 0) {
       closeDetailModal();
-      showToast(`📥 ${json.tasks.length} unduhan ditambahkan ke antrean lokal!`);
-      // Mulai pantau task pertama
+      showToast(`📥 ${json.tasks.length} unduhan ditambahkan ke antrean!`);
+      startQueuePolling();
+      // Pantau task pertama
       trackLocalDownloadProgress(json.tasks[0].task_id, json.tasks[0].filename || title);
+      refreshQueueData();
     } else {
       showToast(`Gagal memulai unduhan: ${json.detail || 'Terjadi kesalahan'}`, true);
     }
@@ -793,9 +798,157 @@ async function triggerLocalDownload() {
   }
 }
 
+function startQueuePolling() {
+  if (queuePollInterval) clearInterval(queuePollInterval);
+  refreshQueueData();
+  queuePollInterval = setInterval(refreshQueueData, 2000);
+}
+
+function stopQueuePolling() {
+  if (queuePollInterval) {
+    clearInterval(queuePollInterval);
+    queuePollInterval = null;
+  }
+}
+
+async function refreshQueueData() {
+  try {
+    const res = await fetch('/api/download/queue');
+    const json = await res.json();
+    if (json.success && json.queue) {
+      renderQueueDrawer(json.queue);
+    }
+  } catch (e) {
+    console.debug('Failed to refresh queue data:', e);
+  }
+}
+
+function renderQueueDrawer(queue) {
+  const badge = document.getElementById('dlQueueBadge');
+  const itemsContainer = document.getElementById('dlQueueItemsList');
+  const widget = document.getElementById('liveDownloadWidget');
+
+  const tasks = queue.tasks || [];
+  const queuedCount = queue.queued_count || 0;
+  const activeTask = queue.active;
+
+  const pendingTotal = queuedCount + (activeTask ? 1 : 0);
+  if (badge) {
+    badge.textContent = `Antrean (${pendingTotal})`;
+  }
+
+  // Jika widget tersembunyi tapi ada task aktif/antre, munculkan
+  if (pendingTotal > 0 && widget && widget.classList.contains('hidden')) {
+    widget.classList.remove('hidden');
+    if (activeTask && (!activeLocalDownloadTaskId || activeLocalDownloadTaskId !== activeTask.task_id)) {
+      trackLocalDownloadProgress(activeTask.task_id, activeTask.filename);
+    }
+  }
+
+  if (!itemsContainer) return;
+
+  if (tasks.length === 0) {
+    itemsContainer.innerHTML = '<div class="text-[11px] text-zinc-500 italic py-1">Tidak ada riwayat unduhan</div>';
+    return;
+  }
+
+  // Tampilkan maksimal 8 task terbaru
+  itemsContainer.innerHTML = tasks.slice(0, 8).map(t => {
+    let statusBadge = '';
+    let actionBtn = '';
+
+    if (t.status === 'downloading') {
+      statusBadge = `<span class="px-1.5 py-0.5 rounded text-[10px] bg-indigo-950 text-indigo-300 font-mono font-bold animate-pulse border border-indigo-800/80">${t.percent.toFixed(0)}%</span>`;
+      actionBtn = `<button onclick="cancelSpecificTask('${t.task_id}')" class="text-zinc-400 hover:text-red-400 text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 transition">Batal</button>`;
+    } else if (t.status === 'resolving') {
+      statusBadge = `<span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-950/70 text-amber-300 border border-amber-800/50">Mencari</span>`;
+      actionBtn = `<button onclick="cancelSpecificTask('${t.task_id}')" class="text-zinc-400 hover:text-red-400 text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 transition">Batal</button>`;
+    } else if (t.status === 'translating_sub' || t.status === 'embedding') {
+      statusBadge = `<span class="px-1.5 py-0.5 rounded text-[10px] bg-purple-950/70 text-purple-300 border border-purple-800/50">Subtitle</span>`;
+    } else if (t.status === 'queued') {
+      statusBadge = `<span class="px-1.5 py-0.5 rounded text-[10px] bg-zinc-800 text-zinc-400">Menunggu</span>`;
+      actionBtn = `<button onclick="cancelSpecificTask('${t.task_id}')" class="text-zinc-400 hover:text-red-400 text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 transition">Batal</button>`;
+    } else if (t.status === 'completed') {
+      statusBadge = `<span class="px-1.5 py-0.5 rounded text-[10px] bg-emerald-950/80 text-emerald-400 font-medium border border-emerald-800/60">✓ Selesai</span>`;
+    } else if (t.status === 'failed') {
+      statusBadge = `<span class="px-1.5 py-0.5 rounded text-[10px] bg-red-950/80 text-red-400 font-medium border border-red-800/60" title="${t.error || ''}">✗ Gagal</span>`;
+      actionBtn = `<button onclick="retrySpecificTask('${t.task_id}')" class="text-indigo-400 hover:text-indigo-300 text-[10px] px-1.5 py-0.5 rounded bg-indigo-950/90 border border-indigo-800 transition font-mono">Ulangi</button>`;
+    } else if (t.status === 'cancelled') {
+      statusBadge = `<span class="px-1.5 py-0.5 rounded text-[10px] bg-zinc-800 text-zinc-500">Dibatalkan</span>`;
+      actionBtn = `<button onclick="retrySpecificTask('${t.task_id}')" class="text-indigo-400 hover:text-indigo-300 text-[10px] px-1.5 py-0.5 rounded bg-indigo-950/90 border border-indigo-800 transition font-mono">Ulangi</button>`;
+    }
+
+    return `
+      <div class="flex items-center justify-between p-1.5 rounded-lg bg-zinc-950/60 border border-zinc-800/60 text-xs">
+        <div class="truncate max-w-[170px] sm:max-w-[210px]">
+          <p class="font-medium text-white truncate text-[11px]">${t.filename || t.title}</p>
+          <p class="text-[9px] text-zinc-400 font-mono">${t.downloaded_str || '0 B'} • ${t.speed_str || ''}</p>
+        </div>
+        <div class="flex items-center space-x-1.5 shrink-0">
+          ${statusBadge}
+          ${actionBtn}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function toggleQueueDrawer() {
+  const drawer = document.getElementById('dlQueueDrawer');
+  const chevron = document.getElementById('dlQueueChevron');
+  if (!drawer) return;
+  const isHidden = drawer.classList.contains('hidden');
+  if (isHidden) {
+    drawer.classList.remove('hidden');
+    if (chevron) chevron.style.transform = 'rotate(180deg)';
+    refreshQueueData();
+  } else {
+    drawer.classList.add('hidden');
+    if (chevron) chevron.style.transform = 'rotate(0deg)';
+  }
+}
+
+async function cancelSpecificTask(taskId) {
+  try {
+    await fetch(`/api/download/cancel/${taskId}`, { method: 'POST' });
+    showToast('Tugas unduhan dibatalkan.');
+    refreshQueueData();
+  } catch (e) {
+    console.error('Cancel task error:', e);
+  }
+}
+
+async function retrySpecificTask(taskId) {
+  try {
+    const res = await fetch(`/api/download/retry/${taskId}`, { method: 'POST' });
+    const json = await res.json();
+    if (json.success) {
+      showToast('Tugas dimasukkan kembali ke antrean unduhan!');
+      startQueuePolling();
+      const widget = document.getElementById('liveDownloadWidget');
+      if (widget) widget.classList.remove('hidden');
+      refreshQueueData();
+    }
+  } catch (e) {
+    console.error('Retry task error:', e);
+  }
+}
+
+async function cancelAllDownloads() {
+  try {
+    const res = await fetch('/api/download/cancel-all', { method: 'POST' });
+    const json = await res.json();
+    showToast(`${json.cancelled_count || 0} tugas unduhan dibatalkan.`);
+    refreshQueueData();
+  } catch (e) {
+    console.error('Cancel all error:', e);
+  }
+}
+
 function trackLocalDownloadProgress(taskId, filename) {
   if (localDownloadEventSource) {
     localDownloadEventSource.close();
+    localDownloadEventSource = null;
   }
 
   activeLocalDownloadTaskId = taskId;
@@ -815,13 +968,13 @@ function trackLocalDownloadProgress(taskId, filename) {
 
   localDownloadEventSource = new EventSource(`/api/download/progress/${taskId}`);
 
-  localDownloadEventSource.onmessage = (event) => {
+  localDownloadEventSource.onmessage = async (event) => {
     try {
       const data = JSON.parse(event.data);
       if (titleEl && data.filename) titleEl.textContent = data.filename;
 
       if (data.status === 'resolving') {
-        if (statusEl) statusEl.textContent = 'Mencari server stream aktif...';
+        if (statusEl) statusEl.textContent = data.speed_str || 'Mencari server stream aktif...';
       } else if (data.status === 'downloading') {
         const pct = Math.max(0, Math.min(100, data.percent || 0));
         if (statusEl) statusEl.textContent = `Menyedot video (${data.downloaded_str || ''} / ${data.total_str || ''})`;
@@ -837,35 +990,56 @@ function trackLocalDownloadProgress(taskId, filename) {
         if (statusEl) statusEl.textContent = 'Menanamkan subtitle ke video MP4...';
         if (percentEl) percentEl.textContent = '99%';
         if (progressBar) progressBar.style.width = '99%';
-      } else if (data.status === 'completed') {
-        if (statusEl) statusEl.textContent = '✅ Selesai! Tersimpan di downloads/';
-        if (percentEl) percentEl.textContent = '100%';
-        if (progressBar) progressBar.style.width = '100%';
-        if (speedEtaEl) speedEtaEl.textContent = `${data.downloaded_str || ''} • Tuntas`;
-        showToast(`🎉 Sukses mengunduh: ${data.output_file || filename}`);
-        fetchLocalDownloadsCount();
+      } else if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
+        // Task ini selesai, gagal, atau dibatalkan
+        if (data.status === 'completed') {
+          if (statusEl) statusEl.textContent = '✅ Selesai! Tersimpan di downloads/';
+          if (percentEl) percentEl.textContent = '100%';
+          if (progressBar) progressBar.style.width = '100%';
+          if (speedEtaEl) speedEtaEl.textContent = `${data.downloaded_str || ''} • Tuntas`;
+          showToast(`🎉 Sukses mengunduh: ${data.output_file || filename}`);
+          fetchLocalDownloadsCount();
+        } else if (data.status === 'failed') {
+          if (statusEl) statusEl.textContent = `❌ Gagal: ${data.error || 'Gagal'}`;
+          showToast(`Episode ${filename} gagal diunduh: ${data.error || ''}`, true);
+        } else if (data.status === 'cancelled') {
+          if (statusEl) statusEl.textContent = '⚠️ Unduhan dibatalkan.';
+        }
 
-        localDownloadEventSource.close();
-        localDownloadEventSource = null;
-        activeLocalDownloadTaskId = null;
+        if (localDownloadEventSource) {
+          localDownloadEventSource.close();
+          localDownloadEventSource = null;
+        }
 
-        setTimeout(() => {
-          if (!activeLocalDownloadTaskId && widget) widget.classList.add('hidden');
-        }, 5000);
-      } else if (data.status === 'failed') {
-        if (statusEl) statusEl.textContent = `❌ Gagal: ${data.error || 'Terjadi kesalahan'}`;
-        showToast(`Download gagal: ${data.error || 'Terjadi kesalahan'}`, true);
-        localDownloadEventSource.close();
-        localDownloadEventSource = null;
-        activeLocalDownloadTaskId = null;
-      } else if (data.status === 'cancelled') {
-        if (statusEl) statusEl.textContent = '⚠️ Unduhan dibatalkan.';
-        localDownloadEventSource.close();
-        localDownloadEventSource = null;
-        activeLocalDownloadTaskId = null;
-        setTimeout(() => {
-          if (widget) widget.classList.add('hidden');
-        }, 3000);
+        refreshQueueData();
+
+        // Cek apakah ada antrean berikutnya yang sedang berjalan atau mengantre
+        setTimeout(async () => {
+          try {
+            const res = await fetch('/api/download/queue');
+            const json = await res.json();
+            if (json.success && json.queue) {
+              const active = json.queue.active;
+              if (active && active.task_id !== taskId) {
+                // Ada episode berikutnya yang sedang diproses! Auto-advance live tracking
+                showToast(`Melanjutkan antrean: ${active.filename || active.title}...`);
+                trackLocalDownloadProgress(active.task_id, active.filename || active.title);
+              } else if (json.queue.queued_count > 0) {
+                // Masih ada yang queued di backend, tunggu sebentar worker mengambilnya
+                setTimeout(() => refreshQueueData(), 1500);
+              } else {
+                // Semua antrean tuntas
+                activeLocalDownloadTaskId = null;
+                stopQueuePolling();
+                setTimeout(() => {
+                  if (!activeLocalDownloadTaskId && widget) widget.classList.add('hidden');
+                }, 8000);
+              }
+            }
+          } catch (e) {
+            console.debug('Error checking next queue task:', e);
+          }
+        }, 1200);
       }
     } catch (e) {
       console.error('Error parsing progress SSE:', e);
@@ -890,6 +1064,7 @@ async function cancelActiveDownload() {
   try {
     await fetch(`/api/download/cancel/${activeLocalDownloadTaskId}`, { method: 'POST' });
     showToast('Membatalkan unduhan...');
+    refreshQueueData();
   } catch (e) {
     console.error('Cancel error:', e);
   }
