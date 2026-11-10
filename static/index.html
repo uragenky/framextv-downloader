@@ -43,21 +43,21 @@
 <body class="bg-zinc-950 text-zinc-100 min-h-screen font-sans antialiased selection:bg-emerald-600 selection:text-white">
 
   <!-- Navbar -->
-  <header class="sticky top-0 z-40 border-b border-zinc-800/80 glass">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+  <header class="sticky top-0 z-40 border-b border-zinc-800/80 glass shadow-md">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
       <!-- Logo -->
-      <div class="flex items-center space-x-3 cursor-pointer" onclick="resetSearch()">
-        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+      <div class="flex items-center space-x-2.5 sm:space-x-3 cursor-pointer shrink-0" onclick="switchMainView('browse'); resetSearch();">
+        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-500/20">
           <i data-lucide="cloud-lightning" class="w-5 h-5 text-white"></i>
         </div>
         <div>
-          <span class="font-black text-xl tracking-tight bg-gradient-to-r from-white via-zinc-200 to-emerald-400 bg-clip-text text-transparent">StreamDown</span>
-          <span class="hidden sm:inline-block ml-2 text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-800/60 font-bold">Cloud Runner 1 Gbps</span>
+          <span class="font-black text-lg sm:text-xl tracking-tight bg-gradient-to-r from-white via-zinc-200 to-emerald-400 bg-clip-text text-transparent">StreamDown</span>
+          <span class="hidden xl:inline-block ml-2 text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-800/60 font-bold">Cloud Runner 1 Gbps</span>
         </div>
       </div>
 
-      <!-- Navigation Tabs: Browse vs Downloads Manager -->
-      <nav class="hidden md:flex items-center space-x-1.5 p-1 bg-zinc-900/90 rounded-2xl border border-zinc-800 shadow-inner">
+      <!-- Navigation Tabs: Browse vs Downloads Manager (Desktop / Tablet >= md) -->
+      <nav class="hidden md:flex items-center space-x-1.5 p-1 bg-zinc-900/90 rounded-2xl border border-zinc-800 shadow-inner shrink-0">
         <button id="navTabBrowse" onclick="switchMainView('browse')" class="flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-sm cursor-pointer">
           <i data-lucide="compass" class="w-4 h-4"></i>
           <span>Jelajah Media</span>
@@ -70,25 +70,13 @@
       </nav>
 
       <!-- Right Nav Items -->
-      <div class="flex items-center space-x-2.5 sm:space-x-3">
-        <!-- Local Saved Files (Downloads Manager Quick Button) -->
-        <button onclick="switchMainView('downloads')" id="btnNavDownloadsQuick" title="Buka Download Manager (File Tersimpan)" class="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-indigo-500/40 text-xs transition cursor-pointer group shadow-sm">
-          <div class="w-6 h-6 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center group-hover:scale-105 transition">
-            <i data-lucide="folder-down" class="w-3.5 h-3.5"></i>
-          </div>
-          <div class="text-left hidden sm:block">
-            <div class="text-[9px] text-zinc-400 font-mono">File Lokal:</div>
-            <div class="text-[11px] font-bold text-indigo-400 font-mono"><span id="navDownloadsCount">0</span> File</div>
-          </div>
-          <span id="navDownloadsBadge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-bold">downloads/</span>
-        </button>
-
+      <div class="flex items-center space-x-2 sm:space-x-2.5 shrink-0">
         <!-- Live Cloud Quota Badge -->
-        <button onclick="openCloudQuotaModal()" title="Lihat Perhitungan Kuota Mesin Server Cloud" class="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-emerald-500/30 text-xs transition cursor-pointer group shadow-sm">
+        <button onclick="openCloudQuotaModal()" title="Lihat Perhitungan Kuota Mesin Server Cloud" class="flex items-center space-x-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-emerald-500/30 text-xs transition cursor-pointer group shadow-sm">
           <div class="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center group-hover:scale-105 transition">
             <i data-lucide="gauge" class="w-3.5 h-3.5"></i>
           </div>
-          <div class="text-left hidden md:block">
+          <div class="text-left hidden lg:block">
             <div class="text-[9px] text-zinc-400 font-mono">Kuota Cloud:</div>
             <div id="navQuotaBrief" class="text-[11px] font-bold text-emerald-400 font-mono">Memuat...</div>
           </div>
@@ -96,11 +84,11 @@
         </button>
 
         <!-- Target Google Drive Account Indicator & Changer -->
-        <button onclick="openGoogleDriveModal()" class="flex items-center space-x-2.5 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-xs transition cursor-pointer group shadow-sm">
+        <button onclick="openGoogleDriveModal()" class="flex items-center space-x-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-xs transition cursor-pointer group shadow-sm">
           <div class="w-6 h-6 rounded-lg bg-zinc-800 text-emerald-400 flex items-center justify-center">
             <i data-lucide="cloud" class="w-3.5 h-3.5"></i>
           </div>
-          <div class="text-left hidden lg:block">
+          <div class="text-left hidden xl:block">
             <div class="flex items-center gap-1.5">
               <span id="navGdriveEmail" class="text-xs font-bold text-white max-w-[150px] truncate">Belum Terhubung</span>
               <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
@@ -112,11 +100,26 @@
         </button>
 
         <!-- GitHub Cloud Runner Setup Button -->
-        <button onclick="openGithubConfigModal()" id="btnGithubStatus" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-xs text-zinc-300 hover:text-white transition cursor-pointer">
+        <button onclick="openGithubConfigModal()" id="btnGithubStatus" class="flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-xs text-zinc-300 hover:text-white transition cursor-pointer">
           <i data-lucide="github" class="w-4 h-4"></i>
           <span id="githubStatusText">Setup</span>
         </button>
       </div>
+    </div>
+
+    <!-- Mobile Sub-Navigation Bar: Always visible on screens < md (< 768px) -->
+    <div class="md:hidden border-t border-zinc-800/80 px-3 py-2 bg-zinc-950/95 backdrop-blur flex items-center justify-center">
+      <nav class="flex items-center space-x-2 p-1 bg-zinc-900/95 rounded-xl border border-zinc-800 shadow-inner w-full max-w-sm justify-center">
+        <button id="navTabBrowseMobile" onclick="switchMainView('browse')" class="flex-1 flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-sm cursor-pointer">
+          <i data-lucide="compass" class="w-3.5 h-3.5"></i>
+          <span>Jelajah Media</span>
+        </button>
+        <button id="navTabDownloadsMobile" onclick="switchMainView('downloads')" class="flex-1 flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-400 hover:text-white transition cursor-pointer">
+          <i data-lucide="folder-down" class="w-3.5 h-3.5"></i>
+          <span>Download Manager</span>
+          <span id="navDownloadsCountBadgeMobile" class="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-mono bg-indigo-950 text-indigo-300 border border-indigo-800 font-bold">0</span>
+        </button>
+      </nav>
     </div>
   </header>
 
@@ -802,6 +805,6 @@
   </div>
 
   <!-- Application Logic -->
-  <script src="/static/js/app.js"></script>
+  <script src="/static/js/app.js?v=2.2.0"></script>
 </body>
 </html>

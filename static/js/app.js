@@ -23,7 +23,41 @@ let cloudQuotaData = null;
 
 // Initialization
 document.addEventListener('DOMContentLoaded', () => {
-  lucide.createIcons();
+  if (window.lucide && typeof window.lucide.createIcons === 'function') {
+    lucide.createIcons();
+  }
+
+  // Initialize view from URL hash (#downloads vs #browse)
+  const initialHash = (window.location.hash || '').replace('#', '');
+  if (initialHash === 'downloads') {
+    switchMainView('downloads', false);
+  } else {
+    switchMainView('browse', false);
+  }
+
+  // Bind click events directly for navigation tabs (desktop & mobile)
+  const bindTab = (id, targetView) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        switchMainView(targetView);
+      });
+    }
+  };
+  bindTab('navTabBrowse', 'browse');
+  bindTab('navTabDownloads', 'downloads');
+  bindTab('navTabBrowseMobile', 'browse');
+  bindTab('navTabDownloadsMobile', 'downloads');
+
+  // Handle browser back/forward or hash changes
+  window.addEventListener('hashchange', () => {
+    const hash = (window.location.hash || '').replace('#', '');
+    if (hash === 'downloads' || hash === 'browse') {
+      switchMainView(hash, false);
+    }
+  });
+
   fetchInitialCatalog();
   fetchGithubStatus();
   fetchGdriveStatus();
@@ -814,8 +848,10 @@ async function fetchLocalDownloadsCount() {
       const cnt = json.count !== undefined ? json.count : (json.files ? json.files.length : 0);
       const countEl = document.getElementById('navDownloadsCount');
       const badgeEl = document.getElementById('navDownloadsCountBadge');
+      const badgeMobileEl = document.getElementById('navDownloadsCountBadgeMobile');
       if (countEl) countEl.textContent = cnt;
       if (badgeEl) badgeEl.textContent = cnt;
+      if (badgeMobileEl) badgeMobileEl.textContent = cnt;
     }
   } catch (e) {
     console.debug('Failed to fetch local downloads count:', e);
@@ -1154,39 +1190,60 @@ async function cancelActiveDownload() {
 // ==========================================
 let currentMainView = 'browse';
 
-function switchMainView(viewName) {
+function switchMainView(viewName, updateHash = true) {
   currentMainView = viewName;
   const viewBrowse = document.getElementById('viewBrowse');
   const viewDownloads = document.getElementById('viewDownloads');
+
   const tabBrowse = document.getElementById('navTabBrowse');
   const tabDownloads = document.getElementById('navTabDownloads');
+  const tabBrowseMobile = document.getElementById('navTabBrowseMobile');
+  const tabDownloadsMobile = document.getElementById('navTabDownloadsMobile');
+
+  const activeBrowseClass = 'flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-sm cursor-pointer';
+  const inactiveBrowseClass = 'flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-zinc-400 hover:text-white hover:bg-zinc-800/80 transition cursor-pointer';
+
+  const activeDlClass = 'flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 shadow-sm cursor-pointer';
+  const inactiveDlClass = 'flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-zinc-400 hover:text-white hover:bg-zinc-800/80 transition cursor-pointer';
+
+  const activeBrowseMobileClass = 'flex-1 flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-sm cursor-pointer';
+  const inactiveBrowseMobileClass = 'flex-1 flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-400 hover:text-white transition cursor-pointer';
+
+  const activeDlMobileClass = 'flex-1 flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 shadow-sm cursor-pointer';
+  const inactiveDlMobileClass = 'flex-1 flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-400 hover:text-white transition cursor-pointer';
 
   if (viewName === 'downloads') {
     if (viewBrowse) viewBrowse.classList.add('hidden');
     if (viewDownloads) viewDownloads.classList.remove('hidden');
 
-    if (tabBrowse) {
-      tabBrowse.className = 'flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-zinc-400 hover:text-white hover:bg-zinc-800/80 transition cursor-pointer';
-    }
-    if (tabDownloads) {
-      tabDownloads.className = 'flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 shadow-sm cursor-pointer';
+    if (tabBrowse) tabBrowse.className = inactiveBrowseClass;
+    if (tabDownloads) tabDownloads.className = activeDlClass;
+    if (tabBrowseMobile) tabBrowseMobile.className = inactiveBrowseMobileClass;
+    if (tabDownloadsMobile) tabDownloadsMobile.className = activeDlMobileClass;
+
+    if (updateHash && window.location.hash !== '#downloads') {
+      try { history.replaceState(null, '', '#downloads'); } catch (e) {}
     }
 
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {}
     loadLocalDownloadsList();
   } else {
     if (viewBrowse) viewBrowse.classList.remove('hidden');
     if (viewDownloads) viewDownloads.classList.add('hidden');
 
-    if (tabBrowse) {
-      tabBrowse.className = 'flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-sm cursor-pointer';
-    }
-    if (tabDownloads) {
-      tabDownloads.className = 'flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-zinc-400 hover:text-white hover:bg-zinc-800/80 transition cursor-pointer';
+    if (tabBrowse) tabBrowse.className = activeBrowseClass;
+    if (tabDownloads) tabDownloads.className = inactiveDlClass;
+    if (tabBrowseMobile) tabBrowseMobile.className = activeBrowseMobileClass;
+    if (tabDownloadsMobile) tabDownloadsMobile.className = inactiveDlMobileClass;
+
+    if (updateHash && window.location.hash !== '#browse' && window.location.hash !== '') {
+      try { history.replaceState(null, '', '#browse'); } catch (e) {}
     }
   }
 
-  lucide.createIcons();
+  if (window.lucide && typeof window.lucide.createIcons === 'function') {
+    window.lucide.createIcons();
+  }
 }
 
 function openLocalDownloadsModal() {
@@ -1296,8 +1353,10 @@ async function loadLocalDownloadsList() {
     // Update Nav Count
     const navCount = document.getElementById('navDownloadsCount');
     const navBadge = document.getElementById('navDownloadsCountBadge');
+    const navBadgeMobile = document.getElementById('navDownloadsCountBadgeMobile');
     if (navCount) navCount.textContent = dlRawFiles.length;
     if (navBadge) navBadge.textContent = dlRawFiles.length;
+    if (navBadgeMobile) navBadgeMobile.textContent = dlRawFiles.length;
 
     // Prune seleksi yang file-nya sudah tidak ada
     const existingNames = new Set(dlRawFiles.map(f => f.filename));
@@ -1403,13 +1462,16 @@ function renderDlFiles() {
       ? `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-950/90 text-emerald-300 border border-emerald-800/80 flex items-center gap-1 shrink-0"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Baru</span>`
       : '';
 
+    const safeFn = encodeURIComponent(f.filename).replace(/'/g, '%27');
+    const safeUrl = encodeURIComponent(f.url).replace(/'/g, '%27');
+
     return `
       <div class="flex items-center justify-between p-3.5 rounded-2xl ${isChecked ? 'bg-indigo-950/30 border-indigo-500/50' : 'bg-zinc-950/80 border-zinc-800/80 hover:border-zinc-700'} border transition gap-3 group shadow-sm">
         <div class="flex items-center space-x-3.5 overflow-hidden">
           <input
             type="checkbox"
             ${isChecked ? 'checked' : ''}
-            onchange="toggleFileSelection('${escapeHtml(f.filename)}', this.checked)"
+            onchange="toggleFileSelection(decodeURIComponent('${safeFn}'), this.checked)"
             class="w-4 h-4 rounded bg-zinc-900 border-zinc-700 text-indigo-600 focus:ring-0 focus:ring-offset-0 cursor-pointer shrink-0"
           />
           <div class="w-10 h-10 rounded-xl ${isVideo ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' : 'bg-teal-500/20 text-teal-400 border border-teal-500/30'} flex items-center justify-center shrink-0">
@@ -1443,14 +1505,14 @@ function renderDlFiles() {
             <span class="hidden sm:inline">Unduh</span>
           </a>
           <button
-            onclick="copyFileLink('${window.location.origin}${f.url}')"
+            onclick="copyFileLink(window.location.origin + decodeURIComponent('${safeUrl}'))"
             class="p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 transition cursor-pointer"
             title="Salin tautan download"
           >
             <i data-lucide="copy" class="w-3.5 h-3.5"></i>
           </button>
           <button
-            onclick="deleteDownloadedFile('${escapeHtml(f.filename)}')"
+            onclick="deleteDownloadedFile(decodeURIComponent('${safeFn}'))"
             class="p-2 rounded-xl bg-zinc-900 hover:bg-red-950/80 text-zinc-400 hover:text-red-400 border border-zinc-800 hover:border-red-800/60 transition cursor-pointer"
             title="Hapus file ini"
           >
@@ -1612,3 +1674,28 @@ async function deleteDownloadedFile(filename) {
     showToast(`Error: ${e.message}`, true);
   }
 }
+
+// Global scope bindings for inline HTML handlers & external callers
+window.switchMainView = switchMainView;
+window.setMediaType = setMediaType;
+window.setDlFilter = setDlFilter;
+window.handleDlSortChange = handleDlSortChange;
+window.handleDlSearchInput = handleDlSearchInput;
+window.clearDlSearch = clearDlSearch;
+window.toggleSelectAllFiles = toggleSelectAllFiles;
+window.toggleFileSelection = toggleFileSelection;
+window.deleteSelectedFiles = deleteSelectedFiles;
+window.cleanRedundantSubtitles = cleanRedundantSubtitles;
+window.loadLocalDownloadsList = loadLocalDownloadsList;
+window.deleteDownloadedFile = deleteDownloadedFile;
+window.copyFileLink = copyFileLink;
+window.triggerSearch = triggerSearch;
+window.resetSearch = resetSearch;
+window.quickSearch = quickSearch;
+window.openLocalDownloadsModal = openLocalDownloadsModal;
+window.closeLocalDownloadsModal = closeLocalDownloadsModal;
+window.openCloudQuotaModal = openCloudQuotaModal;
+window.closeCloudQuotaModal = closeCloudQuotaModal;
+window.openGoogleDriveModal = openGoogleDriveModal;
+window.openGithubConfigModal = openGithubConfigModal;
+window.closeGithubConfigModal = closeGithubConfigModal;
