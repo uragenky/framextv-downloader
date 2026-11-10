@@ -808,6 +808,7 @@ def list_local_downloads() -> List[Dict[str, Any]]:
     if not DOWNLOADS_DIR.exists():
         return files
 
+    now = time.time()
     for entry in DOWNLOADS_DIR.iterdir():
         if entry.is_file() and not entry.name.startswith("."):
             stat = entry.stat()
@@ -817,6 +818,7 @@ def list_local_downloads() -> List[Dict[str, Any]]:
                 "size_bytes": stat.st_size,
                 "size_str": format_bytes(stat.st_size),
                 "modified_at": stat.st_mtime,
+                "is_recent": (now - stat.st_mtime) < 86400,  # Kurang dari 24 jam
                 "ext": ext,
                 "url": f"/api/files/{entry.name}",
             })
@@ -831,3 +833,44 @@ def delete_local_file(filename: str) -> bool:
         file_path.unlink()
         return True
     return False
+
+
+def delete_local_files(filenames: List[str]) -> Dict[str, Any]:
+    """Menghapus banyak file sekaligus secara aman."""
+    deleted = []
+    failed = []
+    freed_bytes = 0
+
+    for name in filenames:
+        safe_name = os.path.basename(name)
+        file_path = DOWNLOADS_DIR / safe_name
+        if file_path.exists() and file_path.is_file():
+            try:
+                sz = file_path.stat().st_size
+                file_path.unlink()
+                deleted.append(safe_name)
+                freed_bytes += sz
+            except Exception as e:
+                failed.append({"filename": safe_name, "error": str(e)})
+        else:
+            failed.append({"filename": safe_name, "error": "Berkas tidak ditemukan"})
+
+    return {
+        "success": True,
+        "deleted_count": len(deleted),
+        "deleted_files": deleted,
+        "freed_bytes": freed_bytes,
+        "freed_str": format_bytes(freed_bytes),
+        "failed_count": len(failed),
+        "failed_files": failed,
+    }
+
+
+def cleanup_subtitles() -> Dict[str, Any]:
+    """Menghapus semua file subtitle (.vtt / .srt / .ass) sisa dari folder downloads/."""
+    sub_filenames = []
+    if DOWNLOADS_DIR.exists():
+        for entry in DOWNLOADS_DIR.iterdir():
+            if entry.is_file() and entry.suffix.lower() in [".vtt", ".srt", ".ass"]:
+                sub_filenames.append(entry.name)
+    return delete_local_files(sub_filenames)

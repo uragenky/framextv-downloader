@@ -811,8 +811,11 @@ async function fetchLocalDownloadsCount() {
     const res = await fetch('/api/downloads');
     const json = await res.json();
     if (json.success) {
+      const cnt = json.count !== undefined ? json.count : (json.files ? json.files.length : 0);
       const countEl = document.getElementById('navDownloadsCount');
-      if (countEl) countEl.textContent = json.count || json.files.length || 0;
+      const badgeEl = document.getElementById('navDownloadsCountBadge');
+      if (countEl) countEl.textContent = cnt;
+      if (badgeEl) badgeEl.textContent = cnt;
     }
   } catch (e) {
     console.debug('Failed to fetch local downloads count:', e);
@@ -1072,6 +1075,9 @@ function trackLocalDownloadProgress(taskId, filename) {
           if (speedEtaEl) speedEtaEl.textContent = `${data.downloaded_str || ''} • Tuntas`;
           showToast(`🎉 Sukses mengunduh: ${data.output_file || filename}`);
           fetchLocalDownloadsCount();
+          if (currentMainView === 'downloads') {
+            loadLocalDownloadsList();
+          }
         } else if (data.status === 'failed') {
           if (statusEl) statusEl.textContent = `❌ Gagal: ${data.error || 'Gagal'}`;
           showToast(`Episode ${filename} gagal diunduh: ${data.error || ''}`, true);
@@ -1143,114 +1149,460 @@ async function cancelActiveDownload() {
   }
 }
 
-// Modal Downloads Manager
-function openLocalDownloadsModal() {
-  const modal = document.getElementById('localDownloadsModal');
-  if (modal) modal.classList.remove('hidden');
-  loadLocalDownloadsList();
+// ==========================================
+// View Switcher: Browse vs Download Manager (Full-Screen)
+// ==========================================
+let currentMainView = 'browse';
+
+function switchMainView(viewName) {
+  currentMainView = viewName;
+  const viewBrowse = document.getElementById('viewBrowse');
+  const viewDownloads = document.getElementById('viewDownloads');
+  const tabBrowse = document.getElementById('navTabBrowse');
+  const tabDownloads = document.getElementById('navTabDownloads');
+
+  if (viewName === 'downloads') {
+    if (viewBrowse) viewBrowse.classList.add('hidden');
+    if (viewDownloads) viewDownloads.classList.remove('hidden');
+
+    if (tabBrowse) {
+      tabBrowse.className = 'flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-zinc-400 hover:text-white hover:bg-zinc-800/80 transition cursor-pointer';
+    }
+    if (tabDownloads) {
+      tabDownloads.className = 'flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 shadow-sm cursor-pointer';
+    }
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    loadLocalDownloadsList();
+  } else {
+    if (viewBrowse) viewBrowse.classList.remove('hidden');
+    if (viewDownloads) viewDownloads.classList.add('hidden');
+
+    if (tabBrowse) {
+      tabBrowse.className = 'flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-sm cursor-pointer';
+    }
+    if (tabDownloads) {
+      tabDownloads.className = 'flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-zinc-400 hover:text-white hover:bg-zinc-800/80 transition cursor-pointer';
+    }
+  }
+
   lucide.createIcons();
 }
 
+function openLocalDownloadsModal() {
+  switchMainView('downloads');
+}
+
 function closeLocalDownloadsModal() {
-  const modal = document.getElementById('localDownloadsModal');
-  if (modal) modal.classList.add('hidden');
+  switchMainView('browse');
+}
+
+// ==========================================
+// Full-Screen Download Manager Logic
+// ==========================================
+let dlRawFiles = [];
+let dlSearchQuery = '';
+let dlActiveFilter = 'all'; // 'all', 'video', 'sub'
+let dlSortBy = 'newest';     // 'newest', 'oldest', 'size_desc', 'size_asc', 'name_asc'
+let dlSelectedFilenames = new Set();
+
+function formatBytes(bytes) {
+  if (!bytes || bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function handleDlSearchInput(val) {
+  dlSearchQuery = (val || '').trim().toLowerCase();
+  const clearBtn = document.getElementById('dlSearchClearBtn');
+  if (clearBtn) {
+    if (dlSearchQuery) clearBtn.classList.remove('hidden');
+    else clearBtn.classList.add('hidden');
+  }
+  renderDlFiles();
+}
+
+function clearDlSearch() {
+  const input = document.getElementById('dlSearchInput');
+  if (input) input.value = '';
+  handleDlSearchInput('');
+}
+
+function setDlFilter(filterType) {
+  dlActiveFilter = filterType;
+  const btnAll = document.getElementById('dlFilterBtnAll');
+  const btnVideo = document.getElementById('dlFilterBtnVideo');
+  const btnSub = document.getElementById('dlFilterBtnSub');
+
+  const activeClass = 'px-3 py-1.5 rounded-lg text-xs font-bold transition bg-indigo-600 text-white shadow cursor-pointer';
+  const inactiveClass = 'px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-400 hover:text-white transition cursor-pointer';
+
+  if (btnAll) btnAll.className = filterType === 'all' ? activeClass : inactiveClass;
+  if (btnVideo) btnVideo.className = filterType === 'video' ? activeClass : inactiveClass;
+  if (btnSub) btnSub.className = filterType === 'sub' ? activeClass : inactiveClass;
+
+  renderDlFiles();
+}
+
+function handleDlSortChange(sortVal) {
+  dlSortBy = sortVal;
+  renderDlFiles();
 }
 
 async function loadLocalDownloadsList() {
-  const container = document.getElementById('localFilesContainer');
-  const summaryEl = document.getElementById('localFilesSummary');
+  const container = document.getElementById('dlFilesList');
   if (!container) return;
 
-  container.innerHTML = '<div class="py-8 text-center text-xs text-zinc-500 font-mono">Memuat file tersimpan...</div>';
+  container.innerHTML = '<div class="py-12 text-center text-xs text-zinc-500 font-mono"><div class="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>Memuat daftar berkas tersimpan...</div>';
 
   try {
     const res = await fetch('/api/downloads');
     const json = await res.json();
 
-    if (!json.success || !json.files || json.files.length === 0) {
-      container.innerHTML = `
-        <div class="py-12 text-center space-y-3">
-          <div class="w-12 h-12 rounded-2xl bg-zinc-800 text-zinc-500 flex items-center justify-center mx-auto">
-            <i data-lucide="folder-open" class="w-6 h-6"></i>
-          </div>
-          <div class="text-xs text-zinc-400">Belum ada file unduhan di folder <code class="text-indigo-400 font-mono">downloads/</code></div>
-          <div class="text-[11px] text-zinc-500">Pilih judul dan klik tombol "Unduh ke Komputer (Lokal)" untuk mulai mengunduh.</div>
-        </div>
-      `;
-      if (summaryEl) summaryEl.textContent = '0 file tersimpan';
-      const countEl = document.getElementById('navDownloadsCount');
-      if (countEl) countEl.textContent = '0';
-      lucide.createIcons();
-      return;
+    if (!json.success || !json.files) {
+      dlRawFiles = [];
+    } else {
+      dlRawFiles = json.files;
     }
 
-    const files = json.files;
-    if (summaryEl) summaryEl.textContent = `${files.length} file tersimpan di folder downloads/`;
-    const countEl = document.getElementById('navDownloadsCount');
-    if (countEl) countEl.textContent = files.length;
+    // Update Stats di Banner Dashboard
+    const totalFilesEl = document.getElementById('dlStatTotalFiles');
+    const totalSizeEl = document.getElementById('dlStatTotalSize');
+    const countsEl = document.getElementById('dlStatCounts');
+    if (totalFilesEl) totalFilesEl.textContent = `${json.count !== undefined ? json.count : dlRawFiles.length} File`;
+    if (totalSizeEl) totalSizeEl.textContent = json.total_size_str || '0 B';
+    if (countsEl) countsEl.textContent = `${json.video_count || 0} Video / ${json.subtitle_count || 0} Sub`;
 
-    container.innerHTML = '';
-    files.forEach(f => {
-      const isVideo = f.ext === 'mp4' || f.ext === 'mkv';
-      const icon = isVideo ? 'video' : 'subtitles';
-      const dateStr = new Date(f.modified_at * 1000).toLocaleString('id-ID', {
-        day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
-      });
+    // Update Counter di Tab Filter
+    const fCountAll = document.getElementById('filterCountAll');
+    const fCountVideo = document.getElementById('filterCountVideo');
+    const fCountSub = document.getElementById('filterCountSub');
+    if (fCountAll) fCountAll.textContent = dlRawFiles.length;
+    if (fCountVideo) fCountVideo.textContent = json.video_count !== undefined ? json.video_count : dlRawFiles.filter(f => ['mp4', 'mkv', 'webm', 'avi'].includes(f.ext)).length;
+    if (fCountSub) fCountSub.textContent = json.subtitle_count !== undefined ? json.subtitle_count : dlRawFiles.filter(f => ['vtt', 'srt', 'ass'].includes(f.ext)).length;
 
-      const row = document.createElement('div');
-      row.className = 'flex items-center justify-between p-3 rounded-xl bg-zinc-950 border border-zinc-800/80 hover:border-zinc-700 transition gap-3';
-      row.innerHTML = `
-        <div class="flex items-center space-x-3 overflow-hidden">
-          <div class="w-9 h-9 rounded-lg ${isVideo ? 'bg-indigo-500/20 text-indigo-400' : 'bg-teal-500/20 text-teal-400'} flex items-center justify-center shrink-0">
-            <i data-lucide="${icon}" class="w-4 h-4"></i>
+    // Update Nav Count
+    const navCount = document.getElementById('navDownloadsCount');
+    const navBadge = document.getElementById('navDownloadsCountBadge');
+    if (navCount) navCount.textContent = dlRawFiles.length;
+    if (navBadge) navBadge.textContent = dlRawFiles.length;
+
+    // Prune seleksi yang file-nya sudah tidak ada
+    const existingNames = new Set(dlRawFiles.map(f => f.filename));
+    for (const name of dlSelectedFilenames) {
+      if (!existingNames.has(name)) dlSelectedFilenames.delete(name);
+    }
+
+    renderDlFiles();
+  } catch (err) {
+    container.innerHTML = `<div class="py-8 text-center text-xs text-red-400 font-mono">Gagal memuat file: ${err.message}</div>`;
+  }
+}
+
+function getFilteredAndSortedFiles() {
+  let list = [...dlRawFiles];
+
+  // 1. Filter by Search Query
+  if (dlSearchQuery) {
+    list = list.filter(f => f.filename.toLowerCase().includes(dlSearchQuery));
+  }
+
+  // 2. Filter by Type
+  if (dlActiveFilter === 'video') {
+    list = list.filter(f => ['mp4', 'mkv', 'webm', 'avi'].includes(f.ext));
+  } else if (dlActiveFilter === 'sub') {
+    list = list.filter(f => ['vtt', 'srt', 'ass'].includes(f.ext));
+  }
+
+  // 3. Sort
+  if (dlSortBy === 'newest') {
+    list.sort((a, b) => (b.modified_at || 0) - (a.modified_at || 0));
+  } else if (dlSortBy === 'oldest') {
+    list.sort((a, b) => (a.modified_at || 0) - (b.modified_at || 0));
+  } else if (dlSortBy === 'size_desc') {
+    list.sort((a, b) => (b.size_bytes || 0) - (a.size_bytes || 0));
+  } else if (dlSortBy === 'size_asc') {
+    list.sort((a, b) => (a.size_bytes || 0) - (b.size_bytes || 0));
+  } else if (dlSortBy === 'name_asc') {
+    list.sort((a, b) => a.filename.localeCompare(b.filename));
+  }
+
+  return list;
+}
+
+function renderDlFiles() {
+  const container = document.getElementById('dlFilesList');
+  if (!container) return;
+
+  const files = getFilteredAndSortedFiles();
+
+  if (files.length === 0) {
+    if (dlRawFiles.length === 0) {
+      container.innerHTML = `
+        <div class="py-16 text-center space-y-3 bg-zinc-900/40 border border-zinc-800 rounded-3xl">
+          <div class="w-14 h-14 rounded-2xl bg-zinc-800 text-zinc-500 flex items-center justify-center mx-auto">
+            <i data-lucide="folder-open" class="w-7 h-7"></i>
+          </div>
+          <div class="text-sm font-semibold text-zinc-300">Belum ada file di folder <code class="text-indigo-400 font-mono">downloads/</code></div>
+          <div class="text-xs text-zinc-500 max-w-sm mx-auto">Silakan pilih film atau episode di halaman Jelajah Media, lalu klik tombol "Unduh ke Komputer".</div>
+          <div class="pt-2">
+            <button onclick="switchMainView('browse')" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition cursor-pointer">
+              Cari & Unduh Media
+            </button>
+          </div>
+        </div>
+      `;
+    } else {
+      container.innerHTML = `
+        <div class="py-16 text-center space-y-2 bg-zinc-900/40 border border-dashed border-zinc-800 rounded-3xl">
+          <i data-lucide="search-x" class="w-8 h-8 text-zinc-500 mx-auto mb-1"></i>
+          <div class="text-sm font-semibold text-zinc-300">Tidak ada berkas yang cocok</div>
+          <div class="text-xs text-zinc-500">Tidak ditemukan file dengan kata kunci atau filter saat ini.</div>
+          <div class="pt-2">
+            <button onclick="clearDlSearch(); setDlFilter('all');" class="px-3.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-mono transition cursor-pointer">
+              Reset Filter & Pencarian
+            </button>
+          </div>
+        </div>
+      `;
+    }
+    updateSelectionToolbar(files);
+    lucide.createIcons();
+    return;
+  }
+
+  container.innerHTML = files.map(f => {
+    const isVideo = ['mp4', 'mkv', 'webm', 'avi'].includes(f.ext);
+    const icon = isVideo ? 'video' : 'subtitles';
+    const isChecked = dlSelectedFilenames.has(f.filename);
+
+    const dateObj = new Date(f.modified_at * 1000);
+    const dateFormatted = dateObj.toLocaleString('id-ID', {
+      day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+
+    const isRecent = f.is_recent || (Date.now() / 1000 - f.modified_at < 86400);
+
+    const formatBadge = isVideo 
+      ? `<span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-indigo-950 text-indigo-300 border border-indigo-800/80 uppercase">${f.ext}</span>`
+      : `<span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-teal-950 text-teal-300 border border-teal-800/80 uppercase">${f.ext}</span>`;
+
+    const recentBadge = isRecent 
+      ? `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-950/90 text-emerald-300 border border-emerald-800/80 flex items-center gap-1 shrink-0"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Baru</span>`
+      : '';
+
+    return `
+      <div class="flex items-center justify-between p-3.5 rounded-2xl ${isChecked ? 'bg-indigo-950/30 border-indigo-500/50' : 'bg-zinc-950/80 border-zinc-800/80 hover:border-zinc-700'} border transition gap-3 group shadow-sm">
+        <div class="flex items-center space-x-3.5 overflow-hidden">
+          <input
+            type="checkbox"
+            ${isChecked ? 'checked' : ''}
+            onchange="toggleFileSelection('${escapeHtml(f.filename)}', this.checked)"
+            class="w-4 h-4 rounded bg-zinc-900 border-zinc-700 text-indigo-600 focus:ring-0 focus:ring-offset-0 cursor-pointer shrink-0"
+          />
+          <div class="w-10 h-10 rounded-xl ${isVideo ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' : 'bg-teal-500/20 text-teal-400 border border-teal-500/30'} flex items-center justify-center shrink-0">
+            <i data-lucide="${icon}" class="w-5 h-5"></i>
           </div>
           <div class="overflow-hidden">
-            <div class="text-xs font-bold text-white truncate max-w-sm" title="${f.filename}">${f.filename}</div>
-            <div class="text-[10px] text-zinc-500 font-mono flex items-center gap-2 mt-0.5">
-              <span>${f.size_str}</span>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-xs sm:text-sm font-bold text-white truncate max-w-xs sm:max-w-lg md:max-w-xl group-hover:text-indigo-300 transition" title="${escapeHtml(f.filename)}">
+                ${escapeHtml(f.filename)}
+              </span>
+              ${formatBadge}
+              ${recentBadge}
+            </div>
+            <div class="text-[11px] text-zinc-500 font-mono flex items-center gap-2 mt-1">
+              <span class="font-bold text-zinc-300">${f.size_str}</span>
               <span>•</span>
-              <span>${dateStr}</span>
+              <span>${dateFormatted}</span>
             </div>
           </div>
         </div>
-        <div class="flex items-center space-x-1.5 shrink-0">
-          <a href="${f.url}" download="${f.filename}" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center space-x-1 transition shadow-sm" title="Download file ke browser">
+
+        <!-- Action Buttons -->
+        <div class="flex items-center space-x-1.5 sm:space-x-2 shrink-0">
+          <a
+            href="${f.url}"
+            download="${escapeHtml(f.filename)}"
+            class="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center space-x-1.5 transition shadow-sm cursor-pointer"
+            title="Download file ke browser"
+          >
             <i data-lucide="download" class="w-3.5 h-3.5"></i>
             <span class="hidden sm:inline">Unduh</span>
           </a>
-          <button onclick="copyFileLink('${window.location.origin}${f.url}')" class="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white transition" title="Salin link download">
+          <button
+            onclick="copyFileLink('${window.location.origin}${f.url}')"
+            class="p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 transition cursor-pointer"
+            title="Salin tautan download"
+          >
             <i data-lucide="copy" class="w-3.5 h-3.5"></i>
           </button>
-          <button onclick="deleteDownloadedFile('${f.filename}')" class="p-1.5 rounded-lg bg-zinc-800 hover:bg-red-950/80 text-zinc-400 hover:text-red-400 transition" title="Hapus file">
+          <button
+            onclick="deleteDownloadedFile('${escapeHtml(f.filename)}')"
+            class="p-2 rounded-xl bg-zinc-900 hover:bg-red-950/80 text-zinc-400 hover:text-red-400 border border-zinc-800 hover:border-red-800/60 transition cursor-pointer"
+            title="Hapus file ini"
+          >
             <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
           </button>
         </div>
-      `;
-      container.appendChild(row);
-    });
+      </div>
+    `;
+  }).join('');
 
-    lucide.createIcons();
-  } catch (e) {
-    container.innerHTML = `<div class="py-4 text-center text-xs text-red-400">Gagal memuat file: ${e.message}</div>`;
+  updateSelectionToolbar(files);
+  lucide.createIcons();
+}
+
+function updateSelectionToolbar(visibleFiles) {
+  const summaryEl = document.getElementById('dlSelectionSummary');
+  const deleteBtn = document.getElementById('dlBtnDeleteSelected');
+  const selectAllCb = document.getElementById('dlSelectAllCheckbox');
+
+  const count = dlSelectedFilenames.size;
+
+  if (summaryEl) {
+    if (count === 0) {
+      summaryEl.textContent = '0 file terpilih';
+      summaryEl.className = 'text-zinc-500 font-mono';
+    } else {
+      let selectedBytes = 0;
+      dlRawFiles.forEach(f => {
+        if (dlSelectedFilenames.has(f.filename)) {
+          selectedBytes += (f.size_bytes || 0);
+        }
+      });
+      summaryEl.textContent = `${count} file terpilih (${formatBytes(selectedBytes)})`;
+      summaryEl.className = 'text-indigo-400 font-bold font-mono';
+    }
+  }
+
+  if (deleteBtn) {
+    deleteBtn.disabled = count === 0;
+  }
+
+  if (selectAllCb) {
+    if (visibleFiles && visibleFiles.length > 0) {
+      const allVisibleSelected = visibleFiles.every(f => dlSelectedFilenames.has(f.filename));
+      selectAllCb.checked = allVisibleSelected;
+      selectAllCb.indeterminate = (!allVisibleSelected && visibleFiles.some(f => dlSelectedFilenames.has(f.filename)));
+    } else {
+      selectAllCb.checked = false;
+      selectAllCb.indeterminate = false;
+    }
+  }
+}
+
+function toggleFileSelection(filename, isChecked) {
+  if (isChecked) {
+    dlSelectedFilenames.add(filename);
+  } else {
+    dlSelectedFilenames.delete(filename);
+  }
+  const visible = getFilteredAndSortedFiles();
+  updateSelectionToolbar(visible);
+  renderDlFiles();
+}
+
+function toggleSelectAllFiles(checked) {
+  const visible = getFilteredAndSortedFiles();
+  if (checked) {
+    visible.forEach(f => dlSelectedFilenames.add(f.filename));
+  } else {
+    visible.forEach(f => dlSelectedFilenames.delete(f.filename));
+  }
+  renderDlFiles();
+}
+
+async function deleteSelectedFiles() {
+  if (dlSelectedFilenames.size === 0) return;
+
+  const count = dlSelectedFilenames.size;
+  let totalBytes = 0;
+  dlRawFiles.forEach(f => {
+    if (dlSelectedFilenames.has(f.filename)) totalBytes += (f.size_bytes || 0);
+  });
+
+  const msg = `Apakah Anda yakin ingin menghapus ${count} berkas terpilih (${formatBytes(totalBytes)}) dari komputer?`;
+  if (!confirm(msg)) return;
+
+  try {
+    showToast(`Menghapus ${count} berkas...`);
+    const filenamesArray = Array.from(dlSelectedFilenames);
+    const res = await fetch('/api/files/bulk-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filenames: filenamesArray })
+    });
+    const json = await res.json();
+    if (json.success) {
+      dlSelectedFilenames.clear();
+      showToast(`🎉 Sukses menghapus ${json.deleted_count} berkas (${json.freed_str} dibebaskan).`);
+      loadLocalDownloadsList();
+      fetchLocalDownloadsCount();
+    } else {
+      showToast(`Gagal menghapus sebagian file: ${json.detail || 'Terjadi kesalahan'}`, true);
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`, true);
+  }
+}
+
+async function cleanRedundantSubtitles() {
+  const subFiles = dlRawFiles.filter(f => ['vtt', 'srt', 'ass'].includes(f.ext));
+  if (subFiles.length === 0) {
+    showToast('Tidak ada berkas subtitle sisa di folder downloads/.');
+    return;
+  }
+
+  const count = subFiles.length;
+  const msg = `Hapus ${count} berkas subtitle sisa (.vtt / .srt)?\n\nCatatan: Subtitle Indonesia sudah otomatis tertanam (embedded) di dalam file video .mp4, sehingga berkas teks ini aman dihapus untuk merapikan daftar.`;
+  if (!confirm(msg)) return;
+
+  try {
+    showToast(`Membersihkan ${count} berkas subtitle...`);
+    const res = await fetch('/api/files/cleanup-subtitles', { method: 'POST' });
+    const json = await res.json();
+    if (json.success) {
+      showToast(`✨ Bersih! ${json.deleted_count} berkas subtitle dihapus (${json.freed_str} ruang dibebaskan).`);
+      loadLocalDownloadsList();
+      fetchLocalDownloadsCount();
+    } else {
+      showToast(`Gagal membersihkan: ${json.detail || 'Error'}`, true);
+    }
+  } catch (err) {
+    showToast(`Error: ${err.message}`, true);
   }
 }
 
 function copyFileLink(link) {
   navigator.clipboard.writeText(link).then(() => {
-    showToast('Tautan download disalin ke clipboard!');
+    showToast('Tautan unduhan disalin ke clipboard!');
   }).catch(() => {
     showToast(link);
   });
 }
 
 async function deleteDownloadedFile(filename) {
-  if (!confirm(`Hapus file "${filename}" dari komputer?`)) return;
+  if (!confirm(`Hapus berkas "${filename}" dari komputer?`)) return;
 
   try {
     const res = await fetch(`/api/files/${encodeURIComponent(filename)}`, { method: 'DELETE' });
     const json = await res.json();
     if (json.success) {
-      showToast(`File "${filename}" berhasil dihapus.`);
+      showToast(`Berkas "${filename}" berhasil dihapus.`);
+      dlSelectedFilenames.delete(filename);
       loadLocalDownloadsList();
       fetchLocalDownloadsCount();
     } else {

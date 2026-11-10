@@ -56,10 +56,23 @@
         </div>
       </div>
 
+      <!-- Navigation Tabs: Browse vs Downloads Manager -->
+      <nav class="hidden md:flex items-center space-x-1.5 p-1 bg-zinc-900/90 rounded-2xl border border-zinc-800 shadow-inner">
+        <button id="navTabBrowse" onclick="switchMainView('browse')" class="flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-sm cursor-pointer">
+          <i data-lucide="compass" class="w-4 h-4"></i>
+          <span>Jelajah Media</span>
+        </button>
+        <button id="navTabDownloads" onclick="switchMainView('downloads')" class="flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-zinc-400 hover:text-white hover:bg-zinc-800/80 transition cursor-pointer">
+          <i data-lucide="folder-down" class="w-4 h-4"></i>
+          <span>Download Manager</span>
+          <span id="navDownloadsCountBadge" class="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-mono bg-indigo-950 text-indigo-300 border border-indigo-800 font-bold">0</span>
+        </button>
+      </nav>
+
       <!-- Right Nav Items -->
       <div class="flex items-center space-x-2.5 sm:space-x-3">
-        <!-- Local Saved Files (Downloads Manager) -->
-        <button onclick="openLocalDownloadsModal()" title="Lihat File Unduhan Tersimpan di Komputer" class="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-indigo-500/40 text-xs transition cursor-pointer group shadow-sm">
+        <!-- Local Saved Files (Downloads Manager Quick Button) -->
+        <button onclick="switchMainView('downloads')" id="btnNavDownloadsQuick" title="Buka Download Manager (File Tersimpan)" class="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-indigo-500/40 text-xs transition cursor-pointer group shadow-sm">
           <div class="w-6 h-6 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center group-hover:scale-105 transition">
             <i data-lucide="folder-down" class="w-3.5 h-3.5"></i>
           </div>
@@ -110,92 +123,247 @@
   <!-- Main Container -->
   <main class="max-w-7xl mx-auto px-4 sm:px-6 py-8">
 
-    <!-- Search Hero -->
-    <section class="mb-10 text-center max-w-3xl mx-auto">
-      <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-950/80 border border-emerald-800/80 text-emerald-300 text-xs font-semibold mb-3 shadow-md">
-        <i data-lucide="zap" class="w-4 h-4 text-emerald-400"></i>
-        <span>100% Cloud-to-Cloud • Bebas Matikan Laptop • Kuota Internet 0%</span>
-      </div>
-
-      <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight mb-3">
-        1-Klik Kirim Film ke <span class="bg-gradient-to-r from-emerald-400 to-teal-300 bg-clip-text text-transparent">Google Drive</span>
-      </h1>
-      <p class="text-zinc-400 text-sm mb-6 max-w-2xl mx-auto leading-relaxed">
-        Pilih film/serial. Begitu Anda klik <strong class="text-white">Kirim ke Cloud</strong>, server cloud akan langsung memprosesnya. <strong>Laptop Anda bisa langsung dimatikan</strong> detik itu juga!
-      </p>
-
-      <!-- Search Box & Segment Filter -->
-      <div class="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-2.5 shadow-2xl shadow-black/60">
-        <!-- Segment Tabs -->
-        <div class="flex items-center justify-center space-x-1 mb-2.5 p-1 bg-zinc-950/80 rounded-xl max-w-xs mx-auto border border-zinc-800/80">
-          <button onclick="setMediaType('movie')" id="btnTabMovie" class="flex-1 py-1 px-3 text-xs font-semibold rounded-lg transition bg-white text-black shadow">Movies</button>
-          <button onclick="setMediaType('tv')" id="btnTabTv" class="flex-1 py-1 px-3 text-xs font-semibold rounded-lg transition text-zinc-400 hover:text-white">TV Series</button>
-          <button onclick="setMediaType('anime')" id="btnTabAnime" class="flex-1 py-1 px-3 text-xs font-semibold rounded-lg transition text-zinc-400 hover:text-white">Anime</button>
+    <!-- ======================================================== -->
+    <!-- VIEW: MEDIA BROWSE & DISCOVERY                           -->
+    <!-- ======================================================== -->
+    <div id="viewBrowse">
+      <!-- Search Hero -->
+      <section class="mb-10 text-center max-w-3xl mx-auto">
+        <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-950/80 border border-emerald-800/80 text-emerald-300 text-xs font-semibold mb-3 shadow-md">
+          <i data-lucide="zap" class="w-4 h-4 text-emerald-400"></i>
+          <span>100% Cloud-to-Cloud • Bebas Matikan Laptop • Kuota Internet 0%</span>
         </div>
 
-        <!-- Search Input -->
-        <div class="relative flex items-center">
-          <i data-lucide="search" class="w-5 h-5 text-zinc-400 absolute left-4"></i>
-          <input 
-            type="text" 
-            id="searchInput" 
-            placeholder="Ketik judul film/series (contoh: Inception, Fight Club, Breaking Bad, Naruto, Pokemon)..." 
-            class="w-full pl-12 pr-28 py-3.5 bg-zinc-950 border border-zinc-800 focus:border-emerald-500 rounded-xl text-sm text-white placeholder-zinc-500 outline-none transition"
-            onkeydown="if(event.key === 'Enter') triggerSearch()"
-          />
-          <button 
-            onclick="triggerSearch()" 
-            id="btnSearch"
-            class="absolute right-2 px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md transition cursor-pointer flex items-center space-x-1.5"
-          >
-            <span>Cari</span>
-            <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
-          </button>
+        <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight mb-3">
+          1-Klik Kirim Film ke <span class="bg-gradient-to-r from-emerald-400 to-teal-300 bg-clip-text text-transparent">Google Drive</span>
+        </h1>
+        <p class="text-zinc-400 text-sm mb-6 max-w-2xl mx-auto leading-relaxed">
+          Pilih film/serial. Begitu Anda klik <strong class="text-white">Kirim ke Cloud</strong>, server cloud akan langsung memprosesnya. <strong>Laptop Anda bisa langsung dimatikan</strong> detik itu juga!
+        </p>
+
+        <!-- Search Box & Segment Filter -->
+        <div class="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-2.5 shadow-2xl shadow-black/60">
+          <!-- Segment Tabs -->
+          <div class="flex items-center justify-center space-x-1 mb-2.5 p-1 bg-zinc-950/80 rounded-xl max-w-xs mx-auto border border-zinc-800/80">
+            <button onclick="setMediaType('movie')" id="btnTabMovie" class="flex-1 py-1 px-3 text-xs font-semibold rounded-lg transition bg-white text-black shadow">Movies</button>
+            <button onclick="setMediaType('tv')" id="btnTabTv" class="flex-1 py-1 px-3 text-xs font-semibold rounded-lg transition text-zinc-400 hover:text-white">TV Series</button>
+            <button onclick="setMediaType('anime')" id="btnTabAnime" class="flex-1 py-1 px-3 text-xs font-semibold rounded-lg transition text-zinc-400 hover:text-white">Anime</button>
+          </div>
+
+          <!-- Search Input -->
+          <div class="relative flex items-center">
+            <i data-lucide="search" class="w-5 h-5 text-zinc-400 absolute left-4"></i>
+            <input 
+              type="text" 
+              id="searchInput" 
+              placeholder="Ketik judul film/series (contoh: Inception, Fight Club, Breaking Bad, Naruto, Pokemon)..." 
+              class="w-full pl-12 pr-28 py-3.5 bg-zinc-950 border border-zinc-800 focus:border-emerald-500 rounded-xl text-sm text-white placeholder-zinc-500 outline-none transition"
+              onkeydown="if(event.key === 'Enter') triggerSearch()"
+            />
+            <button 
+              onclick="triggerSearch()" 
+              id="btnSearch"
+              class="absolute right-2 px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md transition cursor-pointer flex items-center space-x-1.5"
+            >
+              <span>Cari</span>
+              <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Quick Chips -->
+        <div class="flex flex-wrap items-center justify-center gap-2 mt-4 text-xs text-zinc-500">
+          <span>Cepat:</span>
+          <button onclick="quickSearch('Pokemon', 'tv')" class="hover:text-zinc-300 underline cursor-pointer text-emerald-400 font-semibold">Pokemon</button>
+          <span>•</span>
+          <button onclick="quickSearch('Fight Club', 'movie')" class="hover:text-zinc-300 underline cursor-pointer">Fight Club</button>
+          <span>•</span>
+          <button onclick="quickSearch('Inception', 'movie')" class="hover:text-zinc-300 underline cursor-pointer">Inception</button>
+          <span>•</span>
+          <button onclick="quickSearch('Breaking Bad', 'tv')" class="hover:text-zinc-300 underline cursor-pointer">Breaking Bad</button>
+          <span>•</span>
+          <button onclick="quickSearch('Attack on Titan', 'anime')" class="hover:text-zinc-300 underline cursor-pointer">Attack on Titan</button>
+        </div>
+      </section>
+
+      <!-- Results Section -->
+      <section>
+        <div class="flex items-center justify-between mb-4">
+          <h2 id="resultsHeading" class="text-lg font-bold tracking-tight text-white flex items-center space-x-2">
+            <span>Katalog Populer</span>
+          </h2>
+          <span id="resultsCount" class="text-xs font-mono text-zinc-500"></span>
+        </div>
+
+        <!-- Loading Spinner -->
+        <div id="loadingIndicator" class="hidden py-20 text-center">
+          <div class="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+          <p class="text-xs font-mono text-zinc-400">Menghubungi frameXTV server...</p>
+        </div>
+
+        <!-- Grid Cards -->
+        <div id="resultsGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+          <!-- Rendered via JS -->
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="hidden py-16 text-center border border-dashed border-zinc-800 rounded-2xl bg-zinc-900/20">
+          <i data-lucide="film" class="w-12 h-12 text-zinc-600 mx-auto mb-2"></i>
+          <h3 class="text-sm font-semibold text-zinc-300">Tidak ada konten ditemukan</h3>
+          <p class="text-xs text-zinc-500 mt-1">Coba gunakan kata kunci lain atau pilih tab jenis media yang sesuai.</p>
+        </div>
+      </section>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- VIEW: FULL-SCREEN DOWNLOAD MANAGER DASHBOARD             -->
+    <!-- ======================================================== -->
+    <div id="viewDownloads" class="hidden space-y-6">
+      <!-- Top Banner / Summary Card -->
+      <div class="bg-gradient-to-r from-zinc-900 via-zinc-900/95 to-indigo-950/40 border border-zinc-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+        <div class="absolute -right-10 -bottom-10 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
+          <div class="flex items-center space-x-4">
+            <div class="w-12 h-12 rounded-2xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center shadow-lg shadow-indigo-500/10 shrink-0">
+              <i data-lucide="folder-down" class="w-6 h-6"></i>
+            </div>
+            <div>
+              <div class="flex items-center gap-2.5">
+                <h2 class="text-xl font-extrabold text-white tracking-tight">Download Manager</h2>
+                <span class="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-bold">Lokal PC</span>
+              </div>
+              <p class="text-xs text-zinc-400 mt-1 flex items-center gap-1.5 font-mono">
+                <span>Direktori penyimpanan:</span>
+                <span class="text-indigo-400 font-bold bg-indigo-950/80 px-1.5 py-0.5 rounded border border-indigo-800/60">downloads/</span>
+              </p>
+            </div>
+          </div>
+
+          <!-- Stats Badges & Quick Action -->
+          <div class="flex items-center flex-wrap gap-2.5">
+            <div class="px-3.5 py-2 rounded-xl bg-zinc-950/80 border border-zinc-800 text-left">
+              <div class="text-[9px] text-zinc-500 font-mono uppercase">Total Berkas</div>
+              <div id="dlStatTotalFiles" class="text-sm font-bold text-white font-mono">0 File</div>
+            </div>
+            <div class="px-3.5 py-2 rounded-xl bg-zinc-950/80 border border-zinc-800 text-left">
+              <div class="text-[9px] text-zinc-500 font-mono uppercase">Ukuran Disk</div>
+              <div id="dlStatTotalSize" class="text-sm font-bold text-emerald-400 font-mono">0 B</div>
+            </div>
+            <div class="px-3.5 py-2 rounded-xl bg-zinc-950/80 border border-zinc-800 text-left">
+              <div class="text-[9px] text-zinc-500 font-mono uppercase">Video / Sub</div>
+              <div id="dlStatCounts" class="text-sm font-bold text-indigo-300 font-mono">0 / 0</div>
+            </div>
+            <button onclick="loadLocalDownloadsList()" title="Muat ulang daftar berkas" class="p-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition cursor-pointer">
+              <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+            </button>
+            <button onclick="switchMainView('browse')" class="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition cursor-pointer">
+              <i data-lucide="compass" class="w-4 h-4"></i>
+              <span>Kembali ke Jelajah</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      <!-- Quick Chips -->
-      <div class="flex flex-wrap items-center justify-center gap-2 mt-4 text-xs text-zinc-500">
-        <span>Cepat:</span>
-        <button onclick="quickSearch('Pokemon', 'tv')" class="hover:text-zinc-300 underline cursor-pointer text-emerald-400 font-semibold">Pokemon</button>
-        <span>•</span>
-        <button onclick="quickSearch('Fight Club', 'movie')" class="hover:text-zinc-300 underline cursor-pointer">Fight Club</button>
-        <span>•</span>
-        <button onclick="quickSearch('Inception', 'movie')" class="hover:text-zinc-300 underline cursor-pointer">Inception</button>
-        <span>•</span>
-        <button onclick="quickSearch('Breaking Bad', 'tv')" class="hover:text-zinc-300 underline cursor-pointer">Breaking Bad</button>
-        <span>•</span>
-        <button onclick="quickSearch('Attack on Titan', 'anime')" class="hover:text-zinc-300 underline cursor-pointer">Attack on Titan</button>
-      </div>
-    </section>
+      <!-- Controls & Filter Toolbar -->
+      <div class="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 shadow-xl space-y-3">
+        <div class="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+          <!-- Search input -->
+          <div class="relative flex-1">
+            <i data-lucide="search" class="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+            <input
+              type="text"
+              id="dlSearchInput"
+              oninput="handleDlSearchInput(this.value)"
+              placeholder="Cari nama film, episode, atau format berkas (contoh: Doctor X, S01E01, mp4)..."
+              class="w-full pl-10 pr-10 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition font-mono"
+            />
+            <button
+              id="dlSearchClearBtn"
+              onclick="clearDlSearch()"
+              class="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white hidden p-1 cursor-pointer"
+            >
+              <i data-lucide="x" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
 
-    <!-- Results Section -->
-    <section>
-      <div class="flex items-center justify-between mb-4">
-        <h2 id="resultsHeading" class="text-lg font-bold tracking-tight text-white flex items-center space-x-2">
-          <span>Katalog Populer</span>
-        </h2>
-        <span id="resultsCount" class="text-xs font-mono text-zinc-500"></span>
+          <!-- Type Filter Tabs -->
+          <div class="flex items-center space-x-1 p-1 bg-zinc-950 rounded-xl border border-zinc-800 shrink-0">
+            <button onclick="setDlFilter('all')" id="dlFilterBtnAll" class="px-3 py-1.5 rounded-lg text-xs font-bold transition bg-indigo-600 text-white shadow cursor-pointer">
+              Semua (<span id="filterCountAll">0</span>)
+            </button>
+            <button onclick="setDlFilter('video')" id="dlFilterBtnVideo" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-400 hover:text-white transition cursor-pointer">
+              🎬 Video (<span id="filterCountVideo">0</span>)
+            </button>
+            <button onclick="setDlFilter('sub')" id="dlFilterBtnSub" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-zinc-400 hover:text-white transition cursor-pointer">
+              💬 Subtitle (<span id="filterCountSub">0</span>)
+            </button>
+          </div>
+
+          <!-- Sort Dropdown -->
+          <div class="flex items-center space-x-2 shrink-0">
+            <span class="text-xs text-zinc-400 font-mono hidden sm:inline">Urutkan:</span>
+            <select
+              id="dlSortSelect"
+              onchange="handleDlSortChange(this.value)"
+              class="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-white focus:outline-none focus:border-indigo-500 transition font-mono cursor-pointer"
+            >
+              <option value="newest">🕒 Terbaru (Default)</option>
+              <option value="oldest">⏳ Terlama</option>
+              <option value="size_desc">💾 Ukuran Terbesar</option>
+              <option value="size_asc">📄 Ukuran Terkecil</option>
+              <option value="name_asc">🔤 Nama (A - Z)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Batch Selection Action Bar -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between pt-3 border-t border-zinc-800/80 gap-3 text-xs">
+          <!-- Selection Status -->
+          <div class="flex items-center space-x-3">
+            <label class="flex items-center space-x-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                id="dlSelectAllCheckbox"
+                onchange="toggleSelectAllFiles(this.checked)"
+                class="w-4 h-4 rounded bg-zinc-950 border-zinc-700 text-indigo-600 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+              />
+              <span class="text-zinc-300 font-medium font-mono">Pilih Semua</span>
+            </label>
+            <span id="dlSelectionSummary" class="text-zinc-500 font-mono">0 file terpilih</span>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="flex items-center flex-wrap gap-2">
+            <!-- Hapus Terpilih -->
+            <button
+              id="dlBtnDeleteSelected"
+              onclick="deleteSelectedFiles()"
+              disabled
+              class="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-red-950/40 text-red-400 border border-red-900/50 hover:bg-red-900/50 hover:text-red-300 text-xs font-bold transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+            >
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              <span>Hapus Terpilih</span>
+            </button>
+
+            <!-- Bersihkan Subtitle Sisa -->
+            <button
+              id="dlBtnCleanSubtitles"
+              onclick="cleanRedundantSubtitles()"
+              class="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-amber-950/30 text-amber-300 border border-amber-900/50 hover:bg-amber-900/50 text-xs font-semibold transition cursor-pointer"
+              title="Hapus semua berkas sisa .vtt / .srt yang sudah di-embed ke MP4"
+            >
+              <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-400"></i>
+              <span>Bersihkan Subtitle Sisa</span>
+            </button>
+          </div>
+        </div>
       </div>
 
-      <!-- Loading Spinner -->
-      <div id="loadingIndicator" class="hidden py-20 text-center">
-        <div class="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-        <p class="text-xs font-mono text-zinc-400">Menghubungi frameXTV server...</p>
+      <!-- File List Container -->
+      <div id="dlFilesList" class="space-y-2.5">
+        <!-- Rendered by JS -->
       </div>
-
-      <!-- Grid Cards -->
-      <div id="resultsGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-        <!-- Rendered via JS -->
-      </div>
-
-      <!-- Empty State -->
-      <div id="emptyState" class="hidden py-16 text-center border border-dashed border-zinc-800 rounded-2xl bg-zinc-900/20">
-        <i data-lucide="film" class="w-12 h-12 text-zinc-600 mx-auto mb-2"></i>
-        <h3 class="text-sm font-semibold text-zinc-300">Tidak ada konten ditemukan</h3>
-        <p class="text-xs text-zinc-500 mt-1">Coba gunakan kata kunci lain atau pilih tab jenis media yang sesuai.</p>
-      </div>
-    </section>
+    </div>
   </main>
 
   <!-- ======================================================== -->
@@ -623,42 +791,6 @@
       </div>
       <div id="dlQueueItemsList" class="space-y-1.5 text-xs">
         <!-- Rendered by JS -->
-      </div>
-    </div>
-  </div>
-
-  <!-- ======================================================== -->
-  <!-- MODAL FILE TERSIMPAN (LOCAL DOWNLOADS MANAGER)           -->
-  <!-- ======================================================== -->
-  <div id="localDownloadsModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm hidden">
-    <div class="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative space-y-4">
-      <!-- Header -->
-      <div class="flex items-center justify-between pb-3 border-b border-zinc-800">
-        <div class="flex items-center space-x-2.5">
-          <div class="w-9 h-9 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
-            <i data-lucide="folder-down" class="w-5 h-5"></i>
-          </div>
-          <div>
-            <h3 class="text-sm font-bold text-white">File Tersimpan (Download Manager)</h3>
-            <p class="text-[11px] text-zinc-400 font-mono">Direktori penyimpanan lokal: <span class="text-indigo-400 font-bold">downloads/</span></p>
-          </div>
-        </div>
-        <button onclick="closeLocalDownloadsModal()" class="text-zinc-400 hover:text-white">
-          <i data-lucide="x" class="w-4 h-4"></i>
-        </button>
-      </div>
-
-      <!-- File List Container -->
-      <div id="localFilesContainer" class="space-y-2 max-h-96 overflow-y-auto pr-1">
-        <!-- Rendered by JS -->
-      </div>
-
-      <!-- Footer -->
-      <div class="flex items-center justify-between pt-3 border-t border-zinc-800 text-xs">
-        <span id="localFilesSummary" class="text-zinc-400 font-mono">0 file tersimpan</span>
-        <button onclick="closeLocalDownloadsModal()" class="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white font-semibold text-xs rounded-xl transition">
-          Tutup
-        </button>
       </div>
     </div>
   </div>

@@ -25,8 +25,11 @@ from src.downloader.manager import (
     LocalDownloadManager,
     list_local_downloads,
     delete_local_file,
+    delete_local_files,
+    cleanup_subtitles,
     DOWNLOADS_DIR,
     sanitize_filename,
+    format_bytes,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -123,6 +126,10 @@ class LocalDownloadRequest(BaseModel):
     target_sub_lang: Optional[str] = "id"
     auto_translate_sub: Optional[bool] = True
     original_language: Optional[str] = None
+
+
+class BulkDeleteRequest(BaseModel):
+    filenames: List[str]
 
 
 def extract_media_from_input(raw: str) -> Optional[tuple]:
@@ -306,7 +313,18 @@ def api_download_cancel_all():
 @app.get("/api/downloads")
 def api_list_downloads():
     files = list_local_downloads()
-    return {"success": True, "files": files, "count": len(files)}
+    total_size = sum(f.get("size_bytes", 0) for f in files)
+    video_count = sum(1 for f in files if f.get("ext") in ["mp4", "mkv", "webm", "avi"])
+    sub_count = sum(1 for f in files if f.get("ext") in ["vtt", "srt", "ass"])
+    return {
+        "success": True,
+        "files": files,
+        "count": len(files),
+        "total_size_bytes": total_size,
+        "total_size_str": format_bytes(total_size),
+        "video_count": video_count,
+        "subtitle_count": sub_count,
+    }
 
 
 @app.get("/api/files/{filename}")
@@ -328,6 +346,20 @@ def api_delete_file(filename: str):
     if not success:
         raise HTTPException(status_code=404, detail="File tidak ditemukan atau gagal dihapus.")
     return {"success": True, "filename": filename}
+
+
+@app.post("/api/files/bulk-delete")
+def api_bulk_delete(req: BulkDeleteRequest):
+    """Menghapus banyak file lokal sekaligus dalam 1 request."""
+    res = delete_local_files(req.filenames)
+    return res
+
+
+@app.post("/api/files/cleanup-subtitles")
+def api_cleanup_subtitles():
+    """Menghapus seluruh file subtitle (.vtt / .srt) sisa di downloads/."""
+    res = cleanup_subtitles()
+    return res
 
 
 @app.get("/api/details")
