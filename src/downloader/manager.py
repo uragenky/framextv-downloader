@@ -432,6 +432,12 @@ class LocalDownloadManager:
 
         def _sub_worker():
             try:
+                # 0. Jika user memilih tanpa subtitle
+                tgt_lang = (task.target_sub_lang or "id").strip().lower()
+                if tgt_lang in ["none", "no", "skip"]:
+                    logger.info(f"[{task.filename}] Subtitle dilewati (mode: Tanpa Subtitle).")
+                    return
+
                 subs_list = self.client.get_subtitles(
                     media_id=task.media_id,
                     media_type=task.media_type,
@@ -439,10 +445,55 @@ class LocalDownloadManager:
                     episode=task.episode
                 )
                 if not subs_list:
+                    logger.info(f"[{task.filename}] Tidak ditemukan berkas subtitle dari provider.")
                     return
 
-                # Cek apakah subtitle bahasa Indonesia sudah tersedia langsung
-                preferred_target = ["id", "ind", "indonesian"]
+                is_original_mode = tgt_lang in ["original", "as_is"] or not task.auto_translate_sub
+
+                if is_original_mode:
+                    # Mode: Subtitle Asli / Original (Tanpa Translate)
+                    source_candidates = ["en", "eng", "english"]
+                    direct_sub = None
+                    for pref in source_candidates:
+                        for sub in subs_list:
+                            lang = (sub.get("lang") or sub.get("language") or "").lower()
+                            label = (sub.get("label") or "").lower()
+                            if pref == lang or pref in label:
+                                direct_sub = sub
+                                break
+                        if direct_sub:
+                            break
+                    if not direct_sub and subs_list:
+                        direct_sub = subs_list[0]
+
+                    if direct_sub and direct_sub.get("url"):
+                        src_sub_lang = direct_sub.get("lang") or "orig"
+                        vtt_name = f"{final_mp4_path.stem}.{src_sub_lang}.vtt"
+                        vtt_file_path = DOWNLOADS_DIR / vtt_name
+                        srt_name = f"{final_mp4_path.stem}.{src_sub_lang}.srt"
+                        srt_file_path = DOWNLOADS_DIR / srt_name
+                        req_sub = urllib.request.Request(direct_sub["url"], headers={"User-Agent": "Mozilla/5.0"})
+                        with urllib.request.urlopen(req_sub, timeout=12) as s_resp, open(vtt_file_path, "wb") as sf:
+                            sf.write(s_resp.read())
+                        normalize_subtitle_file(vtt_file_path, vtt_file_path, srt_file_path)
+                        sub_result["target_sub_path"] = vtt_file_path
+                        sub_result["target_sub_lang"] = "eng" if src_sub_lang in ["en", "eng"] else src_sub_lang
+                        task.subtitles_files.append(vtt_name)
+                        if srt_file_path.exists():
+                            task.subtitles_files.append(srt_name)
+                        logger.info(f"[{task.filename}] Subtitle asli ({src_sub_lang}) langsung disematkan tanpa translate.")
+                    return
+
+                # Mode: Auto-Translate (ID, EN, JA, ES, KO, dll.)
+                target_aliases = {
+                    "id": ["id", "ind", "indonesian", "bahasa"],
+                    "en": ["en", "eng", "english"],
+                    "ja": ["ja", "jpn", "japanese"],
+                    "es": ["es", "spa", "spanish"],
+                    "ko": ["ko", "kor", "korean"],
+                    "zh": ["zh", "chi", "chinese"],
+                }
+                preferred_target = target_aliases.get(tgt_lang, [tgt_lang])
                 direct_sub = None
                 for pref in preferred_target:
                     for sub in subs_list:
@@ -455,22 +506,23 @@ class LocalDownloadManager:
                         break
 
                 if direct_sub and direct_sub.get("url"):
-                    vtt_name = f"{final_mp4_path.stem}.id.vtt"
+                    # Subtitle bahasa target sudah ada langsung!
+                    vtt_name = f"{final_mp4_path.stem}.{tgt_lang}.vtt"
                     vtt_file_path = DOWNLOADS_DIR / vtt_name
-                    srt_name = f"{final_mp4_path.stem}.id.srt"
+                    srt_name = f"{final_mp4_path.stem}.{tgt_lang}.srt"
                     srt_file_path = DOWNLOADS_DIR / srt_name
                     req_sub = urllib.request.Request(direct_sub["url"], headers={"User-Agent": "Mozilla/5.0"})
                     with urllib.request.urlopen(req_sub, timeout=12) as s_resp, open(vtt_file_path, "wb") as sf:
                         sf.write(s_resp.read())
                     normalize_subtitle_file(vtt_file_path, vtt_file_path, srt_file_path)
                     sub_result["target_sub_path"] = vtt_file_path
-                    sub_result["target_sub_lang"] = "ind"
+                    sub_result["target_sub_lang"] = "ind" if tgt_lang == "id" else tgt_lang
                     task.subtitles_files.append(vtt_name)
                     if srt_file_path.exists():
                         task.subtitles_files.append(srt_name)
-                    logger.info(f"[{task.filename}] Subtitle Indonesia langsung siap & dinormalisasi (background paralel)")
+                    logger.info(f"[{task.filename}] Subtitle '{tgt_lang}' langsung tersedia & dinormalisasi.")
                 else:
-                    # Ambil subtitle alternatif (utamakan English)
+                    # Ambil subtitle sumber (utamakan English) untuk diterjemahkan
                     source_candidates = ["en", "eng", "english"]
                     source_sub = None
                     for pref in source_candidates:
@@ -482,7 +534,6 @@ class LocalDownloadManager:
                                 break
                         if source_sub:
                             break
-
                     if not source_sub and subs_list:
                         source_sub = subs_list[0]
 
@@ -498,32 +549,32 @@ class LocalDownloadManager:
                         sub_result["target_sub_path"] = vtt_file_path
                         sub_result["target_sub_lang"] = "eng" if src_sub_lang in ["en", "eng"] else src_sub_lang
 
-                        # Terjemahkan subtitle ke Indonesia secara simultan
-                        if task.auto_translate_sub and task.target_sub_lang in ["id", "ind"] and src_sub_lang not in ["id", "ind"]:
-                            translated_vtt_name = f"{final_mp4_path.stem}.id.vtt"
+                        # Terjemahkan subtitle ke bahasa target secara simultan
+                        if task.auto_translate_sub and src_sub_lang != tgt_lang:
+                            translated_vtt_name = f"{final_mp4_path.stem}.{tgt_lang}.vtt"
                             translated_vtt_path = DOWNLOADS_DIR / translated_vtt_name
 
                             def on_translate_progress(done: int, total: int):
                                 sub_result["sub_progress"] = f"Sub {done}/{total}"
 
-                            logger.info(f"[{task.filename}] Menerjemahkan subtitle di background simultan...")
+                            logger.info(f"[{task.filename}] Menerjemahkan subtitle ({src_sub_lang} -> {tgt_lang}) simultan...")
                             trans_ok = translate_subtitle_file(
                                 src_path=vtt_file_path,
                                 dest_path=translated_vtt_path,
                                 src_lang=src_sub_lang,
-                                target_lang="id",
+                                target_lang=tgt_lang,
                                 progress_callback=on_translate_progress
                             )
                             if trans_ok and translated_vtt_path.exists() and translated_vtt_path.stat().st_size > 0:
                                 sub_result["target_sub_path"] = translated_vtt_path
-                                sub_result["target_sub_lang"] = "ind"
+                                sub_result["target_sub_lang"] = "ind" if tgt_lang == "id" else tgt_lang
                                 task.subtitles_files.append(translated_vtt_name)
                                 srt_candidate = translated_vtt_path.with_suffix(".srt")
                                 if srt_candidate.exists():
                                     task.subtitles_files.append(srt_candidate.name)
-                                logger.info(f"[{task.filename}] Terjemahan subtitle simultan tuntas!")
+                                logger.info(f"[{task.filename}] Terjemahan subtitle ke '{tgt_lang}' selesai!")
             except Exception as e_sub:
-                logger.warning(f"[{task.filename}] Error memproses subtitle simultan: {e_sub}")
+                logger.warning(f"[{task.filename}] Error memproses subtitle: {e_sub}")
                 sub_result["error"] = str(e_sub)
             finally:
                 sub_result["done"] = True
@@ -698,17 +749,37 @@ class LocalDownloadManager:
                 except: pass
             return
 
+        SUB_LANG_LABELS = {
+            "ind": "Indonesian",
+            "id": "Indonesian",
+            "eng": "English",
+            "en": "English",
+            "ja": "Japanese",
+            "jpn": "Japanese",
+            "es": "Spanish",
+            "spa": "Spanish",
+            "ko": "Korean",
+            "kor": "Korean",
+            "zh": "Chinese",
+            "chi": "Chinese",
+            "ar": "Arabic",
+            "ara": "Arabic",
+            "de": "German",
+            "fr": "French",
+        }
+        lang_label = SUB_LANG_LABELS.get(task.target_sub_lang, "Indonesia")
+
         # 5. Tunggu proses subtitle/terjemahan background selesai (jika masih berjalan)
         if not sub_result.get("done"):
             task.status = "translating_sub"
             start_wait = time.time()
             max_sub_wait = 180  # Maksimal 3 menit toleransi terjemahan
-            logger.info(f"[{task.filename}] Menunggu terjemahan subtitle background tuntas...")
+            logger.info(f"[{task.filename}] Menunggu proses subtitle background tuntas...")
             while not sub_result.get("done") and (time.time() - start_wait < max_sub_wait):
                 if task.is_cancelled:
                     break
                 prog = sub_result.get("sub_progress")
-                task.speed_str = f"Menerjemahkan subtitle ({prog})..." if prog else "Menerjemahkan subtitle ke Indonesia..."
+                task.speed_str = f"Menerjemahkan subtitle ({prog})..." if prog else f"Menerjemahkan subtitle ke {lang_label}..."
                 time.sleep(0.5)
 
         target_sub_path = sub_result.get("target_sub_path")
@@ -728,7 +799,7 @@ class LocalDownloadManager:
 
         if need_remux and FFMPEG_BIN.exists():
             embedded_temp_path = DOWNLOADS_DIR / f".embed_{task.task_id}_{final_filename}"
-            sub_title_label = "Indonesian" if target_sub_lang in ["id", "ind"] else "English"
+            sub_title_label = SUB_LANG_LABELS.get(target_sub_lang, target_sub_lang.upper())
 
             cmd = [
                 str(FFMPEG_BIN), "-y",

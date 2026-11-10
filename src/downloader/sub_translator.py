@@ -23,6 +23,23 @@ LANG_MAP = {
     "en": {"generic": "en", "mymemory": "english", "label": "English"},
     "eng": {"generic": "en", "mymemory": "english", "label": "English"},
     "english": {"generic": "en", "mymemory": "english", "label": "English"},
+    "ja": {"generic": "ja", "mymemory": "japanese", "label": "Japanese"},
+    "jpn": {"generic": "ja", "mymemory": "japanese", "label": "Japanese"},
+    "japanese": {"generic": "ja", "mymemory": "japanese", "label": "Japanese"},
+    "es": {"generic": "es", "mymemory": "spanish", "label": "Spanish"},
+    "spa": {"generic": "es", "mymemory": "spanish", "label": "Spanish"},
+    "spanish": {"generic": "es", "mymemory": "spanish", "label": "Spanish"},
+    "ko": {"generic": "ko", "mymemory": "korean", "label": "Korean"},
+    "kor": {"generic": "ko", "mymemory": "korean", "label": "Korean"},
+    "korean": {"generic": "ko", "mymemory": "korean", "label": "Korean"},
+    "zh": {"generic": "zh", "mymemory": "chinese", "label": "Chinese"},
+    "chi": {"generic": "zh", "mymemory": "chinese", "label": "Chinese"},
+    "chinese": {"generic": "zh", "mymemory": "chinese", "label": "Chinese"},
+    "ar": {"generic": "ar", "mymemory": "arabic", "label": "Arabic"},
+    "ara": {"generic": "ar", "mymemory": "arabic", "label": "Arabic"},
+    "arabic": {"generic": "ar", "mymemory": "arabic", "label": "Arabic"},
+    "de": {"generic": "de", "mymemory": "german", "label": "German"},
+    "fr": {"generic": "fr", "mymemory": "french", "label": "French"},
 }
 
 
@@ -32,6 +49,20 @@ def normalize_lang_code(code: str) -> str:
         return "id"
     if c in ["en", "eng", "english"]:
         return "en"
+    if c in ["ja", "jpn", "japanese"]:
+        return "ja"
+    if c in ["es", "spa", "spanish"]:
+        return "es"
+    if c in ["ko", "kor", "korean"]:
+        return "ko"
+    if c in ["zh", "chi", "chinese"]:
+        return "zh"
+    if c in ["ar", "ara", "arabic"]:
+        return "ar"
+    if c in ["de", "ger", "german"]:
+        return "de"
+    if c in ["fr", "fre", "french"]:
+        return "fr"
     return c
 
 

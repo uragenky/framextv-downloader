@@ -269,8 +269,83 @@ async function openDetailModal(item) {
     modalEmail.textContent = gdriveConfig.email || gdriveConfig.google_account || 'Belum Terhubung';
   }
 
+  // Restore Subtitle Mode Preference
+  try {
+    const savedSubMode = localStorage.getItem('streamdown_sub_mode') || 'translate_id';
+    const subSel = document.getElementById('selectSubtitleMode');
+    if (subSel) {
+      subSel.value = savedSubMode;
+    }
+  } catch (e) {}
+  onSubtitleModeChange();
+  updateCloudUIState();
+
   modal.classList.remove('hidden');
   lucide.createIcons();
+}
+
+function updateCloudUIState() {
+  const btn = document.getElementById('btnExecuteCloud');
+  const icon = document.getElementById('btnExecuteCloudIcon');
+  const text = document.getElementById('btnExecuteCloudText');
+  const badge = document.getElementById('btnExecuteCloudBadge');
+  const notice = document.getElementById('cloudSetupNotice');
+  const quotaPill = document.getElementById('navQuotaPill');
+
+  const isConfigured = Boolean(githubConfig && githubConfig.configured);
+
+  if (isConfigured) {
+    if (btn) {
+      btn.className = 'flex-1 flex items-center justify-center space-x-2 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs shadow-lg shadow-emerald-600/30 transition cursor-pointer active:scale-95';
+    }
+    if (icon) icon.setAttribute('data-lucide', 'cloud-lightning');
+    if (text) text.textContent = 'Kirim ke Cloud';
+    if (badge) badge.classList.add('hidden');
+    if (notice) notice.classList.add('hidden');
+  } else {
+    if (btn) {
+      btn.className = 'flex-1 flex items-center justify-center space-x-2 py-3 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 text-xs font-bold transition cursor-pointer';
+    }
+    if (icon) icon.setAttribute('data-lucide', 'cloud-off');
+    if (text) text.textContent = 'Kirim ke Cloud';
+    if (badge) {
+      badge.classList.remove('hidden');
+      badge.textContent = 'Setup';
+    }
+    if (notice) notice.classList.remove('hidden');
+
+    if (quotaPill && (!cloudQuotaData || !cloudQuotaData.configured)) {
+      quotaPill.textContent = 'Mode Lokal';
+    }
+  }
+
+  if (window.lucide && typeof window.lucide.createIcons === 'function') {
+    window.lucide.createIcons();
+  }
+}
+
+function onSubtitleModeChange() {
+  const sel = document.getElementById('selectSubtitleMode');
+  const desc = document.getElementById('subSelectedDescription');
+  if (!sel) return;
+
+  const val = sel.value;
+  try {
+    localStorage.setItem('streamdown_sub_mode', val);
+  } catch (e) {}
+
+  const descriptions = {
+    translate_id: '✨ Otomatis terjemahkan subtitle ke Indonesia',
+    original: '📄 Gunakan subtitle asli tanpa proses terjemahan',
+    translate_en: '✨ Terjemahkan subtitle ke Bahasa Inggris',
+    translate_ja: '✨ Terjemahkan subtitle ke Bahasa Jepang',
+    translate_es: '✨ Terjemahkan subtitle ke Bahasa Spanyol',
+    none: '⚡ Unduh cepat video saja tanpa file subtitle'
+  };
+
+  if (desc) {
+    desc.textContent = descriptions[val] || '✨ Pengaturan subtitle siap';
+  }
 }
 
 function closeDetailModal() {
@@ -527,6 +602,7 @@ async function triggerCloudTransfer() {
   if (!selectedItem) return;
 
   if (!githubConfig.configured) {
+    showToast('Fitur Cloud Runner belum disetel. Silakan isi konfigurasi GitHub untuk mengaktifkan.', true);
     openGithubConfigModal();
     return;
   }
@@ -700,6 +776,7 @@ async function fetchGithubStatus() {
         text.textContent = 'Setup Cloud';
         btn.className = 'flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-xs text-zinc-300 hover:text-white transition cursor-pointer';
       }
+      updateCloudUIState();
     }
   } catch (e) {}
 }
@@ -873,6 +950,23 @@ async function triggerLocalDownload() {
 
   const origLang = (itemDetails && itemDetails.original_language) || (selectedItem && selectedItem.original_language) || null;
 
+  const subModeSelect = document.getElementById('selectSubtitleMode');
+  const subMode = subModeSelect ? subModeSelect.value : 'translate_id';
+
+  let targetSubLang = 'id';
+  let autoTranslate = true;
+
+  if (subMode === 'none') {
+    targetSubLang = 'none';
+    autoTranslate = false;
+  } else if (subMode === 'original') {
+    targetSubLang = 'original';
+    autoTranslate = false;
+  } else if (subMode.startsWith('translate_')) {
+    targetSubLang = subMode.replace('translate_', '');
+    autoTranslate = true;
+  }
+
   const payload = {
     id: String(selectedItem.id),
     title: title,
@@ -882,8 +976,8 @@ async function triggerLocalDownload() {
     episodes: eps,
     provider: null,
     filename: null,
-    target_sub_lang: 'id',
-    auto_translate_sub: true,
+    target_sub_lang: targetSubLang,
+    auto_translate_sub: autoTranslate,
     original_language: origLang
   };
 
@@ -1699,3 +1793,5 @@ window.closeCloudQuotaModal = closeCloudQuotaModal;
 window.openGoogleDriveModal = openGoogleDriveModal;
 window.openGithubConfigModal = openGithubConfigModal;
 window.closeGithubConfigModal = closeGithubConfigModal;
+window.onSubtitleModeChange = onSubtitleModeChange;
+window.updateCloudUIState = updateCloudUIState;
